@@ -110,31 +110,33 @@ public class ScanNodeHandler : MonoBehaviour
             _scanRadiusTrigger.radius = _cachedMaxDistance / factor;
         }
         
-        var localPlayer = GameNetworkManager.Instance.localPlayerController;
-        var playerLocation = localPlayer.transform.position;
-        var scanNodePosition = ScanNode.transform.position;
-        var camera = localPlayer.gameplayCamera;
-
-        if (localPlayer.CameraFOV == 0f)
+        //only update if we have slots in the scanner
+        if ( IsActive || ScannerPatches.CanScan() ) //TODO: only update in the 0.3f seconds that the scanner runs
         {
-            var vFoVrad = camera.fieldOfView * Mathf.Deg2Rad;
-            var cameraHeightAt1 = Mathf.Tan(vFoVrad * .5f);
-            var hFoVrad = Mathf.Atan(cameraHeightAt1 * camera.aspect) * 2;
-            localPlayer.CameraFOV = hFoVrad * Mathf.Rad2Deg;
-        }
+            var localPlayer = GameNetworkManager.Instance.localPlayerController;
+            var playerLocation = localPlayer.transform.position;
+            var scanNodePosition = ScanNode.transform.position;
+            var camera = localPlayer.gameplayCamera;
 
-        var direction = scanNodePosition - camera.transform.position;
-        direction.Normalize();
 
-        var angle = Vector3.Angle(direction, camera.transform.forward);
+            if (localPlayer.CameraFOV == 0f)
+            {
+                var vFoVrad = camera.fieldOfView * Mathf.Deg2Rad;
+                var cameraHeightAt1 = Mathf.Tan(vFoVrad * .5f);
+                var hFoVrad = Mathf.Atan(cameraHeightAt1 * camera.aspect) * 2;
+                localPlayer.CameraFOV = hFoVrad * Mathf.Rad2Deg;
+            }
 
-        if ( IsActive || ScannerPatches.CanScan() )
-        {
+            var direction = scanNodePosition - camera.transform.position;
+            direction.Normalize();
+
+            var angle = Vector3.Angle(direction, camera.transform.forward);
+
             IsOnScreen = angle <= localPlayer.CameraFOV / 2f;
 
             IsValid = CheckValid();
 
-            if (InMaxRange && IsValid /*&& (IsActive || true TODO: check there are free slots in HUD)*/)
+            if (InMaxRange && IsValid)
             {
 
                 CachedDistance = Vector3.Distance(scanNodePosition, playerLocation);
@@ -152,6 +154,12 @@ public class ScanNodeHandler : MonoBehaviour
                     }
                 }
             }
+        }
+        else
+        {
+            IsOnScreen = false;
+            IsValid = false;
+            InMinRange = true;
         }
     }
     
