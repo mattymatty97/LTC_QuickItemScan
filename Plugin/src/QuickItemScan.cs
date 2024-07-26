@@ -53,12 +53,20 @@ namespace QuickItemScan
         }
         internal static class PluginConfig
         {
+	        internal static ConfigEntry<float> ScanTimer;
+	        
+	        internal static ConfigEntry<bool> Verbose;
+	        
             internal static void Init()
             {
                 var config = INSTANCE.Config;
                 //Initialize Configs
-				
-				
+                ScanTimer = config.Bind("Scanner", "scan_duration", 5.0f,
+	                new ConfigDescription("how long the scanned items will stay on screen",
+		                new AcceptableValueRange<float>(0f, 20f)));
+                
+                Verbose = config.Bind("Debug", "verbose", false,
+	                new ConfigDescription("print more logs"));
             }
 
             internal static void CleanAndSave()

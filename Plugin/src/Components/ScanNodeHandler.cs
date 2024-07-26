@@ -56,7 +56,9 @@ public class ScanNodeHandler : MonoBehaviour
         if (gameNetworkManager.localPlayerController.isPlayerDead)
             return;
         
-        QuickItemScan.Log.LogDebug($"{ScanNode.headerText}({GetInstanceID()}) is now in range");
+        if(QuickItemScan.PluginConfig.Verbose.Value)
+            QuickItemScan.Log.LogDebug($"{ScanNode.headerText}({GetInstanceID()}) is now in range");
+        
         InMaxRange = true;
         InMinRange = false;
         IsValid = CheckValid();
@@ -76,7 +78,9 @@ public class ScanNodeHandler : MonoBehaviour
         if (gameNetworkManager == null || controller==null || controller != gameNetworkManager.localPlayerController)
             return;
         
-        QuickItemScan.Log.LogDebug($"{ScanNode.headerText}({GetInstanceID()}) is now out of range");
+        if(QuickItemScan.PluginConfig.Verbose.Value)
+            QuickItemScan.Log.LogDebug($"{ScanNode.headerText}({GetInstanceID()}) is now out of range");
+        
         InMaxRange = false;
         InMinRange = true;
         HasLos = false;
@@ -86,7 +90,9 @@ public class ScanNodeHandler : MonoBehaviour
 
     private void OnDestroy()
     {
-        QuickItemScan.Log.LogDebug($"{ScanNode.headerText}({GetInstanceID()}) is now out of range");
+        if(QuickItemScan.PluginConfig.Verbose.Value)
+            QuickItemScan.Log.LogDebug($"{ScanNode.headerText}({GetInstanceID()}) is now out of range");
+        
         InMaxRange = false;
         InMinRange = true;
         IsValid = false;
@@ -110,8 +116,8 @@ public class ScanNodeHandler : MonoBehaviour
             _scanRadiusTrigger.radius = _cachedMaxDistance / factor;
         }
         
-        //only update if we have slots in the scanner
-        if ( IsActive || ScannerPatches.CanScan() ) //TODO: only update in the 0.3f seconds that the scanner runs
+        //only update if we have slots in the scanner ( or if we're already shown )
+        if ( IsActive || (InMaxRange && ScannerPatches.CanScan()) ) //TODO: only update in the 0.3f seconds that the scanner runs
         {
             var localPlayer = GameNetworkManager.Instance.localPlayerController;
             var playerLocation = localPlayer.transform.position;
@@ -138,7 +144,6 @@ public class ScanNodeHandler : MonoBehaviour
 
             if (InMaxRange && IsValid)
             {
-
                 CachedDistance = Vector3.Distance(scanNodePosition, playerLocation);
 
                 InMinRange = CachedDistance < ScanNode.minRange;

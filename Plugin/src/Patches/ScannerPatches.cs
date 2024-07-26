@@ -150,6 +150,8 @@ internal class ScannerPatches
         if (!__runOriginal)
             return;
 
+        //TODO: move this to the Update cycle similar to vanilla
+        //TODO: make ScanNodeHandler only update during the vanilla delay
         foreach (var nodeHandler in ScanNodeHandler.ScannableNodes)
         {
             if (!nodeHandler)
@@ -160,7 +162,7 @@ internal class ScannerPatches
             if (DisplayedScanNodes.TryGetValue(nodeHandler, out var data))
             {
                 if (visible)
-                    data.TimeLeft = 9.0f;
+                    data.TimeLeft = QuickItemScan.PluginConfig.ScanTimer.Value;
                 continue;
             }
 
@@ -174,7 +176,7 @@ internal class ScannerPatches
                 new ScanNodeDisplayData
                 {
                     Index = index,
-                    TimeLeft = 9.0f
+                    TimeLeft = QuickItemScan.PluginConfig.ScanTimer.Value
                 };
 
             nodeHandler.IsActive = true;
