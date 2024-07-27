@@ -30,52 +30,51 @@ using System;
 using System.Runtime.CompilerServices;
 using AsyncLoggers.DBAPI;
 
-namespace QuickItemScan.Dependency
-{
-    public static class AsyncLoggerProxy
-    {        
-        private static bool? _enabled;
-        public static bool Enabled
+namespace QuickItemScan.Dependency;
+
+public static class AsyncLoggerProxy
+{        
+    private static bool? _enabled;
+    public static bool Enabled
+    {
+        get
         {
-            get
-            {
-                if (_enabled.HasValue)
-                    return _enabled.Value;
-                try
-                {
-                    _enabled = isDbEnabled();
-                }catch (Exception)            
-                {                
-                    _enabled = false;
-                    return false;
-                }
+            if (_enabled.HasValue)
                 return _enabled.Value;
+            try
+            {
+                _enabled = isDbEnabled();
+            }catch (Exception)            
+            {                
+                _enabled = false;
+                return false;
             }
+            return _enabled.Value;
         }
-    
-        [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.NoOptimization)]
-        public static void WriteEvent(string source, string tag, string data, DateTime? timestamp = null)
-        {
-            SqliteLogger.WriteEvent(source, tag, data, timestamp);
-        }
-    
-        [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.NoOptimization)]
-        public static void WriteData(string source, string tag, string data, DateTime? timestamp = null)
-        {
-            SqliteLogger.WriteData(source, tag, data, timestamp);
-        }
-    
-        [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.NoOptimization)]
-        public static bool isDbEnabled()
-        {
-            return SqliteLogger.Enabled;
-        }
-    
-        [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.NoOptimization)]
-        public static int getExecutionID()
-        {
-            return SqliteLogger.ExecutionId;
-        }
-    
     }
+    
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.NoOptimization)]
+    public static void WriteEvent(string source, string tag, string data, DateTime? timestamp = null)
+    {
+        SqliteLogger.WriteEvent(source, tag, data, timestamp);
+    }
+    
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.NoOptimization)]
+    public static void WriteData(string source, string tag, string data, DateTime? timestamp = null)
+    {
+        SqliteLogger.WriteData(source, tag, data, timestamp);
+    }
+    
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.NoOptimization)]
+    public static bool isDbEnabled()
+    {
+        return SqliteLogger.Enabled;
+    }
+    
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.NoOptimization)]
+    public static int getExecutionID()
+    {
+        return SqliteLogger.ExecutionId;
+    }
+    
 }

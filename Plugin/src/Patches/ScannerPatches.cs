@@ -15,6 +15,7 @@ internal class ScannerPatches
     [HarmonyPatch(typeof(ScanNodeProperties), nameof(ScanNodeProperties.Awake)), HarmonyPostfix]
     private static void OnAwake(ScanNodeProperties __instance)
     {
+        //add our components in a nested gameobject, so they won't interfere
         var gameObject = new GameObject
         {
             name = nameof(QuickItemScan)
@@ -24,30 +25,29 @@ internal class ScannerPatches
         handler.ScanNode = __instance;
     }
 
-    private class ScanNodeDisplayData
-    {
-        public int Index;
-        public float TimeLeft;
-        public bool Initialized;
-    }
-
+    //TODO: use a Queue of RectTransfomrs instead of just their indexes
     private static readonly Queue<int> PingIndexes = [];
 
-    private static readonly Dictionary<ScanNodeHandler, ScanNodeDisplayData> DisplayedScanNodes = new();
-    private static readonly int ColorNumber = Animator.StringToHash("colorNumber");
-    private static readonly int Display1 = Animator.StringToHash("display");
+    private static readonly HashSet<ScanNodeHandler> DisplayedScanNodes = new();
+    private static readonly int ColorNumberHash = Animator.StringToHash("colorNumber");
+    private static readonly int DisplayHash = Animator.StringToHash("display");
 
     internal static bool CanScan()
     {
-        return PingIndexes.Any();
+        if (!HUDManager.Instance)
+            return false;
+        
+        return HUDManager.Instance.playerPingingScan > 0 && PingIndexes.Any();
     }
 
-    [HarmonyPatch(typeof(HUDManager), nameof(HUDManager.Start)), HarmonyPrefix]
+    [HarmonyPatch(typeof(HUDManager), nameof(HUDManager.Start)), HarmonyPostfix]
     private static void GetPingIndexes(HUDManager __instance)
     {
+        //reset all states
         PingIndexes.Clear();
         DisplayedScanNodes.Clear();
-
+        
+        //pre-load the queue with all the possible scans
         for (var i = 0; i < __instance.scanElements.Length; i++)
         {
             PingIndexes.Enqueue(i);
@@ -61,45 +61,69 @@ internal class ScannerPatches
         if (!__runOriginal)
             return false;
 
-        var foundScrap = false;
+        TryAddNewNodes(__instance);
+        
+        var scannedScrap = UpdateNodesOnScreen(__instance, playerScript);
 
+        if (!scannedScrap)
+        {
+            __instance.totalScrapScanned = 0;
+            __instance.totalScrapScannedDisplayNum = 0;
+            __instance.addToDisplayTotalInterval = 0.35f;
+        }
 
+        __instance.scanInfoAnimator.SetBool(DisplayHash, __instance.scannedScrapNum >= 2 && scannedScrap);
+
+        return false;
+    }
+
+    private static bool UpdateNodesOnScreen(HUDManager @this, PlayerControllerB playerScript)
+    {
+        @this.scannedScrapNum = 0;
+        
         using (ListPool<int>.Get(out var returnedIndexes))
         {
             using (ListPool<ScanNodeHandler>.Get(out var toRemove))
             {
-                foreach (var (handler, scanNodeDisplayData) in DisplayedScanNodes)
+                foreach (var handler in DisplayedScanNodes)
                 {
-                    var element = __instance.scanElements[scanNodeDisplayData.Index];
-                    scanNodeDisplayData.TimeLeft -= Time.deltaTime;
-                    if (!handler || !handler.IsOnScreen || !handler.IsValid || scanNodeDisplayData.TimeLeft <= 0)
+                    var element = handler.DisplayData.Element;
+                    //update expiration time
+                    handler.DisplayData.TimeLeft -= Time.deltaTime;
+                    //check if node expired or is not visible anymore
+                    if (!handler || !handler.IsOnScreen || !handler.IsValid || handler.DisplayData.TimeLeft <= 0)
                     {
-                        returnedIndexes.Add(scanNodeDisplayData.Index);
+                        returnedIndexes.Add(handler.DisplayData.Index);
                         toRemove.Add(handler);
-                        handler.IsActive = false;
+                        handler.DisplayData.Active = false;
+                        handler.DisplayData.TimeLeft = 0;
+                        handler.DisplayData.Element = null;
+                        handler.DisplayData.Index = -1;
                         
                         if (handler.ScanNode.nodeType == 2)
-                            __instance.totalScrapScanned -= handler.ScanNode.scrapValue;
+                            @this.totalScrapScanned -= handler.ScanNode.scrapValue;
                         continue;
                     }
                     
                     var scanNode = handler.ScanNode;
-
-                    if (__instance.scanElementsHidden)
+                    
+                    //if hide elements is active consider all slots as not Initialized
+                    if (@this.scanElementsHidden)
                     {
-                        scanNodeDisplayData.Initialized = false;
+                        handler.DisplayData.Shown = false;
                     }
                     else
                     {
-                        if (!scanNodeDisplayData.Initialized)
+                        //initialize the field ( run it only once to save resources )
+                        if (!handler.DisplayData.Shown)
                         {
-                            scanNodeDisplayData.Initialized = true;
+                            handler.DisplayData.Shown = true;
                             if (!element.gameObject.activeSelf)
                             {
                                 element.gameObject.SetActive(true);
-                                element.GetComponent<Animator>().SetInteger(ColorNumber, scanNode.nodeType);
+                                element.GetComponent<Animator>().SetInteger(ColorNumberHash, scanNode.nodeType);
                                 if (scanNode.creatureScanID != -1)
-                                    __instance.AttemptScanNewCreature(scanNode.creatureScanID);
+                                    @this.AttemptScanNewCreature(scanNode.creatureScanID);
                             }
 
                             var scanElementText = element.gameObject.GetComponentsInChildren<TextMeshProUGUI>();
@@ -110,84 +134,105 @@ internal class ScannerPatches
                             }
                         }
 
+                        //update position on screen
                         var screenPoint = playerScript.gameplayCamera.WorldToScreenPoint(scanNode.transform.position);
                         element.anchoredPosition = new Vector2(screenPoint.x - 439.48f, screenPoint.y - 244.8f);
                     }
 
+                    //track scrap
                     if (scanNode.nodeType == 2)
-                        foundScrap = true;
+                        @this.scannedScrapNum++;
                 }
-
+                
+                //remove all expired nodes
                 foreach (var handler in toRemove)
                 {
                     DisplayedScanNodes.Remove(handler);
                 }
-            }
 
-            foreach (var elementIndex in returnedIndexes)
-            {
-                __instance.scanElements[elementIndex].gameObject.SetActive(false);
-                PingIndexes.Enqueue(elementIndex);
+                //return all expired indexes to the Queue
+                foreach (var elementIndex in returnedIndexes)
+                {
+                    var element = @this.scanElements[elementIndex];
+                    element.gameObject.SetActive(false);
+                    @this.scanNodes.Remove(element);
+                    PingIndexes.Enqueue(elementIndex);
+                }
             }
         }
-
-        if (!foundScrap)
-        {
-            __instance.totalScrapScanned = 0;
-            __instance.totalScrapScannedDisplayNum = 0;
-            __instance.addToDisplayTotalInterval = 0.35f;
-        }
-
-        __instance.scanInfoAnimator.SetBool(Display1, __instance.scannedScrapNum >= 2 && foundScrap);
-
-        return false;
+        
+        //report if we found scrap
+        return @this.scannedScrapNum > 0;
     }
 
-
-    [HarmonyPatch(typeof(HUDManager), "PingScan_performed"), HarmonyPostfix]
-    private static void PerformScan(HUDManager __instance, bool __runOriginal)
+    private static void TryAddNewNodes(HUDManager @this)
     {
-        if (!__runOriginal)
+        /*
+        @this.updateScanInterval -= Time.deltaTime;
+        if (@this.updateScanInterval > 0)
+            return;
+        @this.updateScanInterval = 0.1f;
+        */
+        
+        //only run when the player is scanning ( 0.3f after click )
+        if (@this.playerPingingScan <= 0)
             return;
 
-        //TODO: move this to the Update cycle similar to vanilla
-        //TODO: make ScanNodeHandler only update during the vanilla delay
+        var addedItems = 0;
+        
+        //sort nodes by priority ( nodeType > validity > distance )
+        //TODO: find if there is a more efficient way of doing this
+        ScanNodeHandler.ScannableNodes.Sort();
+        
+        //loop over the list
         foreach (var nodeHandler in ScanNodeHandler.ScannableNodes)
         {
             if (!nodeHandler)
                 continue;
 
             var visible = nodeHandler.IsValid && !nodeHandler.InMinRange && nodeHandler.HasLos;
-
-            if (DisplayedScanNodes.TryGetValue(nodeHandler, out var data))
+            
+            if (DisplayedScanNodes.Contains(nodeHandler))
             {
+                //if already shown update the expiration time
                 if (visible)
-                    data.TimeLeft = QuickItemScan.PluginConfig.ScanTimer.Value;
+                    nodeHandler.DisplayData.TimeLeft = QuickItemScan.PluginConfig.ScanTimer.Value;
                 continue;
             }
+            
+            //if we already scanned enough for this frame skip all the rest
+            if (addedItems > QuickItemScan.PluginConfig.ItemsPerFrame.Value)
+                break;
 
+            //skip if not visible
             if (!visible)
                 continue;
             
+            //try grab a new scanSlot ( skip if we filled all slots )
             if (!PingIndexes.TryDequeue(out var index))
-                return;
+                continue;
 
-            DisplayedScanNodes[nodeHandler] =
-                new ScanNodeDisplayData
-                {
-                    Index = index,
-                    TimeLeft = QuickItemScan.PluginConfig.ScanTimer.Value
-                };
+            addedItems++;
 
-            nodeHandler.IsActive = true;
+            DisplayedScanNodes.Add(nodeHandler);
 
-            __instance.scanNodes[__instance.scanElements[index]] = nodeHandler.ScanNode;
+            nodeHandler.DisplayData.Active   = true;
+            nodeHandler.DisplayData.Shown    = false;
+            nodeHandler.DisplayData.Index    = index;
+            nodeHandler.DisplayData.Element  = @this.scanElements[index];
+            nodeHandler.DisplayData.TimeLeft = QuickItemScan.PluginConfig.ScanTimer.Value;
 
+            //no idea why but adding them to this dictionary is required for them to show up in the right position
+            @this.scanNodes[@this.scanElements[index]] = nodeHandler.ScanNode;
+
+            //update scrap values
             if (nodeHandler.ScanNode.nodeType != 2)
                 continue;
 
-            __instance.totalScrapScanned += nodeHandler.ScanNode.scrapValue;
-            __instance.addedToScrapCounterThisFrame = true;
+            @this.totalScrapScanned += nodeHandler.ScanNode.scrapValue;
+            @this.addedToScrapCounterThisFrame = true;
         }
     }
+    
+    
 }

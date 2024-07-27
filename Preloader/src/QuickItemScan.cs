@@ -34,9 +34,6 @@ internal class QuickItemScan
                 if (type.FullName == "ScanNodeProperties")
                 {
                     type.AddMethod("Awake", logCallback:logHandler);
-                }else if (type.FullName == "GameNetcodeStuff.PlayerControllerB")
-                {
-                    type.AddField(FieldAttributes.Private,"CameraFOV", type.Module.TypeSystem.Single, logCallback:logHandler);
                 }
             }
         }

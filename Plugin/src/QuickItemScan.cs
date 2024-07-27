@@ -7,81 +7,84 @@ using BepInEx.Configuration;
 using BepInEx.Logging;
 using HarmonyLib;
 
-namespace QuickItemScan
+namespace QuickItemScan;
+
+[BepInPlugin(GUID, NAME, VERSION)]
+[BepInDependency("BMX.LobbyCompatibility", Flags:BepInDependency.DependencyFlags.SoftDependency)]
+[BepInDependency("ainavt.lc.lethalconfig", Flags:BepInDependency.DependencyFlags.SoftDependency)]
+internal class QuickItemScan : BaseUnityPlugin
 {
-    [BepInPlugin(GUID, NAME, VERSION)]
-    [BepInDependency("BMX.LobbyCompatibility", Flags:BepInDependency.DependencyFlags.SoftDependency)]
-    [BepInDependency("ainavt.lc.lethalconfig", Flags:BepInDependency.DependencyFlags.SoftDependency)]
-    internal class QuickItemScan : BaseUnityPlugin
-    {
 		
-        public static QuickItemScan INSTANCE { get; private set; }
+	public static QuickItemScan INSTANCE { get; private set; }
 		
-        public const string GUID = "mattymatty.QuickItemScan";
-        public const string NAME = "QuickItemScan";
-        public const string VERSION = "1.0.0";
+	public const string GUID = "mattymatty.QuickItemScan";
+	public const string NAME = "QuickItemScan";
+	public const string VERSION = "1.0.0";
 
-        internal static ManualLogSource Log;
+	internal static ManualLogSource Log;
             
-        private void Awake()
-        {
+	private void Awake()
+	{
 			
-	        INSTANCE = this;
-            Log = Logger;
-            try
-            {
-				if (LobbyCompatibilityChecker.Enabled)
-					LobbyCompatibilityChecker.Init();
-				if (AsyncLoggerProxy.Enabled)
-					AsyncLoggerProxy.WriteEvent(NAME, "Awake", "Initializing");
-				Log.LogInfo("Initializing Configs");
+		INSTANCE = this;
+		Log = Logger;
+		try
+		{
+			if (LobbyCompatibilityChecker.Enabled)
+				LobbyCompatibilityChecker.Init();
+			if (AsyncLoggerProxy.Enabled)
+				AsyncLoggerProxy.WriteEvent(NAME, "Awake", "Initializing");
+			Log.LogInfo("Initializing Configs");
 
-				PluginConfig.Init();
+			PluginConfig.Init();
 				
-				Log.LogInfo("Patching Methods");
-				var harmony = new Harmony(GUID);
-				harmony.PatchAll(Assembly.GetExecutingAssembly());
+			Log.LogInfo("Patching Methods");
+			var harmony = new Harmony(GUID);
+			harmony.PatchAll(Assembly.GetExecutingAssembly());
 				
-				Log.LogInfo(NAME + " v" + VERSION + " Loaded!");
-				if (AsyncLoggerProxy.Enabled)
-					AsyncLoggerProxy.WriteEvent(NAME, "Awake", "Finished Initializing");
-            }
-            catch (Exception ex)
-            {
-                Log.LogError("Exception while initializing: \n" + ex);
-            }
-        }
-        internal static class PluginConfig
-        {
-	        internal static ConfigEntry<float> ScanTimer;
+			Log.LogInfo(NAME + " v" + VERSION + " Loaded!");
+			if (AsyncLoggerProxy.Enabled)
+				AsyncLoggerProxy.WriteEvent(NAME, "Awake", "Finished Initializing");
+		}
+		catch (Exception ex)
+		{
+			Log.LogError("Exception while initializing: \n" + ex);
+		}
+	}
+	internal static class PluginConfig
+	{
+		internal static ConfigEntry<float> ScanTimer;
+		internal static ConfigEntry<int> ItemsPerFrame;
 	        
-	        internal static ConfigEntry<bool> Verbose;
+		internal static ConfigEntry<bool> Verbose;
 	        
-            internal static void Init()
-            {
-                var config = INSTANCE.Config;
-                //Initialize Configs
-                ScanTimer = config.Bind("Scanner", "scan_duration", 5.0f,
-	                new ConfigDescription("how long the scanned items will stay on screen",
-		                new AcceptableValueRange<float>(0f, 20f)));
+		internal static void Init()
+		{
+			var config = INSTANCE.Config;
+			//Initialize Configs
+			ScanTimer = config.Bind("Scanner", "scan_duration", 5.0f,
+				new ConfigDescription("how long the scanned items will stay on screen",
+					new AcceptableValueRange<float>(0f, 20f)));
+			ItemsPerFrame = config.Bind("Scanner", "items_per_frame", 5,
+				new ConfigDescription("how many items can be scanned each frame",
+					new AcceptableValueRange<int>(1, 20)));
                 
-                Verbose = config.Bind("Debug", "verbose", false,
-	                new ConfigDescription("print more logs"));
-            }
+			Verbose = config.Bind("Debug", "verbose", false,
+				new ConfigDescription("print more logs"));
+		}
 
-            internal static void CleanAndSave()
-            {
-	            var config = INSTANCE.Config;
-	            //remove unused options
-	            PropertyInfo orphanedEntriesProp = config.GetType().GetProperty("OrphanedEntries", BindingFlags.NonPublic | BindingFlags.Instance);
+		internal static void CleanAndSave()
+		{
+			var config = INSTANCE.Config;
+			//remove unused options
+			PropertyInfo orphanedEntriesProp = config.GetType().GetProperty("OrphanedEntries", BindingFlags.NonPublic | BindingFlags.Instance);
 
-	            var orphanedEntries = (Dictionary<ConfigDefinition, string>)orphanedEntriesProp!.GetValue(config, null);
+			var orphanedEntries = (Dictionary<ConfigDefinition, string>)orphanedEntriesProp!.GetValue(config, null);
 
-	            orphanedEntries.Clear(); // Clear orphaned entries (Unbinded/Abandoned entries)
-	            config.Save(); // Save the config file
-            }
+			orphanedEntries.Clear(); // Clear orphaned entries (Unbinded/Abandoned entries)
+			config.Save(); // Save the config file
+		}
             
-        }
+	}
 
-    }
 }
