@@ -68,6 +68,7 @@ internal class ScannerPatches
         {
             using (ListPool<ScanNodeHandler>.Get(out var toRemove))
             {
+                //TODO: move data inside handler to reduce allocations
                 foreach (var (handler, scanNodeDisplayData) in DisplayedScanNodes)
                 {
                     var element = __instance.scanElements[scanNodeDisplayData.Index];
