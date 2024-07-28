@@ -54,7 +54,9 @@ internal class QuickItemScan : BaseUnityPlugin
 	internal static class PluginConfig
 	{
 		internal static ConfigEntry<float> ScanTimer;
-		internal static ConfigEntry<int> ItemsPerFrame;
+		internal static ConfigEntry<int> MaxScanItems;
+		internal static ConfigEntry<float> NewNodeDelay;
+		internal static ConfigEntry<int> NewNodeCount;
 	        
 		internal static ConfigEntry<bool> Verbose;
 	        
@@ -63,11 +65,17 @@ internal class QuickItemScan : BaseUnityPlugin
 			var config = INSTANCE.Config;
 			//Initialize Configs
 			ScanTimer = config.Bind("Scanner", "scan_duration", 5.0f,
-				new ConfigDescription("how long the scanned items will stay on screen",
-					new AcceptableValueRange<float>(0f, 20f)));
-			ItemsPerFrame = config.Bind("Scanner", "items_per_frame", 5,
-				new ConfigDescription("how many items can be scanned each frame",
-					new AcceptableValueRange<int>(1, 20)));
+				new ConfigDescription("how long the scanned items will stay on screen ( negative means no expiration )",
+					new AcceptableValueRange<float>(-1f, 20f)));
+			MaxScanItems = config.Bind("Scanner", "max_items", 100,
+				new ConfigDescription("how many items can be shown on screen",
+					new AcceptableValueRange<int>(1, 999)));
+			NewNodeDelay = config.Bind("Scanner", "new_node_delay", 0.01f,
+				new ConfigDescription("how long to wait before showing a new node",
+					new AcceptableValueRange<float>(0f, 1f)));
+			NewNodeCount = config.Bind("Scanner", "new_node_count", 1,
+				new ConfigDescription("how many nodes to show each cycle ( -1 means no delay )",
+					new AcceptableValueRange<int>(-1, 10)));
                 
 			Verbose = config.Bind("Debug", "verbose", false,
 				new ConfigDescription("print more logs"));

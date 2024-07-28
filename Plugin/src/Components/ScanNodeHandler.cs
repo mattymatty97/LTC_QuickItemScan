@@ -21,7 +21,7 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
     public class ScanNodeDisplayData
     {
         public int Index { get; internal set; } = -1;
-        public float TimeLeft { get; internal set; }
+        public float TimeLeft { get; internal set; } = 1;
         public RectTransform Element { get; internal set; }
         public bool Shown { get; internal set; }
         public bool Active { get; internal set; }
