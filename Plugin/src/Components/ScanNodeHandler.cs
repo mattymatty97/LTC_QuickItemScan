@@ -8,7 +8,7 @@ namespace QuickItemScan.Components;
 
 public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
 {
-    public static readonly List<ScanNodeHandler> ScannableNodes = new();
+    public static readonly HashSet<ScanNodeHandler> ScannableNodes = new();
     
     public class ScanNodeComponents
     {
@@ -200,13 +200,19 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
     {
         if (!ScanNode)
             return -1;
+
+        if (!other)
+            return 1;
         
-        var tmp = ScanNode.nodeType.CompareTo(other.ScanNode.nodeType);
+        var tmp = IsOnScreen.CompareTo(other.IsOnScreen);
         if (tmp != 0)
             return tmp;
-
+        
         tmp = IsValid.CompareTo(other.IsValid);
-
+        if (tmp != 0)
+            return tmp;
+        
+        tmp = ScanNode.nodeType.CompareTo(other.ScanNode.nodeType);
         if (tmp != 0)
             return tmp;
 

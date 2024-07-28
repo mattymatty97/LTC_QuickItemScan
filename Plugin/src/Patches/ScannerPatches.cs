@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using HarmonyLib;
 using QuickItemScan.Components;
+using QuickItemScan.Utils;
 using TMPro;
 using UnityEngine;
 using UnityEngine.Pool;
@@ -219,69 +220,80 @@ internal class ScannerPatches
         if (@this.updateScanInterval > 0)
             return;
         @this.updateScanInterval = 0.1f;
-
-        //sort nodes by priority ( nodeType > validity > distance )
-        //TODO: find if there is a more efficient way of doing this
-        ScanNodeHandler.ScannableNodes.Sort();
-
+        
         //only run when the player is scanning ( 0.3f after click )
         if (@this.playerPingingScan <= 0)
             return;
 
         @this.scannedScrapNum = 0;
 
-        //loop over the list
-        //foreach (var nodeHandler in scanNodeList)
-        foreach (var nodeHandler in ScanNodeHandler.ScannableNodes)
+        using (ListPool<ScanNodeHandler>.Get(out var orderedNodes))
         {
-            if (!nodeHandler)
-                continue;
-
-            var visible = nodeHandler.IsValid && !nodeHandler.InMinRange && nodeHandler.HasLos;
-
-            if (DisplayedScanNodes.Contains(nodeHandler))
+            //loop over the list
+            foreach (var nodeHandler in ScanNodeHandler.ScannableNodes)
             {
-                //if already shown update the expiration time
-                if (visible)
+                if (!nodeHandler)
+                    continue;
+                
+                if (!nodeHandler.IsOnScreen)
+                    continue;
+
+                var visible = nodeHandler.IsValid && !nodeHandler.InMinRange && nodeHandler.HasLos;
+
+                if (DisplayedScanNodes.Contains(nodeHandler))
                 {
-                    if (QuickItemScan.PluginConfig.ScanTimer.Value >=0)
-                        nodeHandler.DisplayData.TimeLeft = QuickItemScan.PluginConfig.ScanTimer.Value;
-                    if (nodeHandler.ScanNode.nodeType == 2)
-                        @this.scannedScrapNum++;
+                    //if already shown update the expiration time
+                    if (visible)
+                    {
+                        if (QuickItemScan.PluginConfig.ScanTimer.Value >= 0)
+                            nodeHandler.DisplayData.TimeLeft = QuickItemScan.PluginConfig.ScanTimer.Value;
+                        if (nodeHandler.ScanNode.nodeType == 2)
+                            @this.scannedScrapNum++;
+                    }
+
+                    continue;
                 }
 
-                continue;
+                //skip if not visible
+                if (!visible)
+                    continue;
+                
+                //skip if we filled all slots
+                if (!PingIndexes.Any())
+                    continue;
+                
+                //sort nodes by priority ( nodeType > distance )
+                orderedNodes.AddOrdered(nodeHandler);
             }
 
-            //skip if not visible
-            if (!visible)
-                continue;
+            foreach (var nodeHandler in orderedNodes)
+            {
+                //try grab a new scanSlot ( skip if we filled all slots )
+                if (!PingIndexes.TryDequeue(out var index))
+                    break;
 
-            //try grab a new scanSlot ( skip if we filled all slots )
-            if (!PingIndexes.TryDequeue(out var index))
-                continue;
+                DisplayedScanNodes.Add(nodeHandler);
 
-            DisplayedScanNodes.Add(nodeHandler);
+                nodeHandler.DisplayData.Active = true;
+                nodeHandler.DisplayData.Shown = false;
+                nodeHandler.DisplayData.Index = index;
+                nodeHandler.DisplayData.Element = @this.scanElements[index];
+                if (QuickItemScan.PluginConfig.ScanTimer.Value >= 0)
+                    nodeHandler.DisplayData.TimeLeft = QuickItemScan.PluginConfig.ScanTimer.Value;
 
-            nodeHandler.DisplayData.Active = true;
-            nodeHandler.DisplayData.Shown = false;
-            nodeHandler.DisplayData.Index = index;
-            nodeHandler.DisplayData.Element = @this.scanElements[index];
-            if (QuickItemScan.PluginConfig.ScanTimer.Value >=0)
-                nodeHandler.DisplayData.TimeLeft = QuickItemScan.PluginConfig.ScanTimer.Value;
+                //no idea why but adding them to this dictionary is required for them to show up in the right position
+                //apparently used by the animators on the scan node displays
+                @this.scanNodes[@this.scanElements[index]] = nodeHandler.ScanNode;
 
-            //no idea why but adding them to this dictionary is required for them to show up in the right position
-            //apparently used by the animators on the scan node displays
-            @this.scanNodes[@this.scanElements[index]] = nodeHandler.ScanNode;
+                //update scrap values
+                if (nodeHandler.ScanNode.nodeType != 2)
+                    continue;
 
-            //update scrap values
-            if (nodeHandler.ScanNode.nodeType != 2)
-                continue;
+                @this.totalScrapScanned += nodeHandler.ScanNode.scrapValue;
+                @this.addedToScrapCounterThisFrame = true;
 
-            @this.totalScrapScanned += nodeHandler.ScanNode.scrapValue;
-            @this.addedToScrapCounterThisFrame = true;
-
-            @this.scannedScrapNum++;
+                @this.scannedScrapNum++;
+            }
         }
     }
 }
