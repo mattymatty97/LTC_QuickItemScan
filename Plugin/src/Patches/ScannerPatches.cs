@@ -41,7 +41,7 @@ internal class ScannerPatches
         if (!HUDManager.Instance)
             return false;
 
-        return HUDManager.Instance.playerPingingScan > 0 && PingIndexes.Any();
+        return HUDManager.Instance.playerPingingScan > 0 && PingIndexes.Count > 0;
     }
 
     [HarmonyPatch(typeof(HUDManager), nameof(HUDManager.Start)), HarmonyPostfix]
@@ -131,6 +131,10 @@ internal class ScannerPatches
 
     private static bool UpdateNodesOnScreen(HUDManager @this)
     {
+
+        if (DisplayedScanNodes.Count <= 0) 
+            return false;
+        
         var scrapOnScreen = false;
         
         using (ListPool<int>.Get(out var returnedIndexes))
@@ -141,7 +145,7 @@ internal class ScannerPatches
                 {
                     var element = handler.DisplayData.Element;
                     //update expiration time
-                    if (QuickItemScan.PluginConfig.ScanTimer.Value >=0)
+                    if (QuickItemScan.PluginConfig.ScanTimer.Value >= 0 && handler.DisplayData.Shown)
                         handler.DisplayData.TimeLeft -= Time.deltaTime;
                     //check if node expired or is not visible anymore
                     if (!handler || !handler.IsOnScreen || !handler.IsValid || handler.DisplayData.TimeLeft <= 0)
@@ -164,9 +168,9 @@ internal class ScannerPatches
                     //throttle init of new nodes
                     if (!handler.DisplayData.Shown && NewNodesToAdd != 0)
                     {
-                        if(NewNodesToAdd > 0)
-                            NewNodesToAdd--;
                         handler.DisplayData.Shown = true;
+                        if (NewNodesToAdd > 0)
+                            NewNodesToAdd--;
                         if (!element.gameObject.activeSelf)
                         {
                             element.gameObject.SetActive(true);
@@ -183,10 +187,12 @@ internal class ScannerPatches
                         }
                     }
 
-                    //apparently this is not needed!
-                    /*//update position on screen
-                    var screenPoint = playerScript.gameplayCamera.WorldToScreenPoint(scanNode.transform.position);
-                    element.anchoredPosition = new Vector2(screenPoint.x - 439.48f, screenPoint.y - 244.8f);*/
+                    //apparently this is not needed! EDIT: apparently imperium somehow patches something in here
+                    //update position on screen
+                    var screenPoint =
+                        GameNetworkManager.Instance.localPlayerController.gameplayCamera.WorldToScreenPoint(
+                            scanNode.transform.position);
+                    element.anchoredPosition = new Vector2(screenPoint.x - 439.48f, screenPoint.y - 244.8f);
 
                     //track scrap
                     if (scanNode.nodeType == 2)
@@ -227,72 +233,75 @@ internal class ScannerPatches
 
         @this.scannedScrapNum = 0;
 
-        using (ListPool<ScanNodeHandler>.Get(out var orderedNodes))
+        if (ScanNodeHandler.ScannableNodes.Count > 0)
         {
-            //loop over the list
-            foreach (var nodeHandler in ScanNodeHandler.ScannableNodes)
+            using (ListPool<ScanNodeHandler>.Get(out var orderedNodes))
             {
-                if (!nodeHandler)
-                    continue;
-                
-                if (!nodeHandler.IsOnScreen)
-                    continue;
-
-                var visible = nodeHandler.IsValid && !nodeHandler.InMinRange && nodeHandler.HasLos;
-
-                if (DisplayedScanNodes.Contains(nodeHandler))
+                //loop over the list
+                foreach (var nodeHandler in ScanNodeHandler.ScannableNodes)
                 {
-                    //if already shown update the expiration time
-                    if (visible)
+                    if (!nodeHandler)
+                        continue;
+
+                    if (!nodeHandler.IsOnScreen)
+                        continue;
+
+                    var visible = nodeHandler.IsValid && !nodeHandler.InMinRange && nodeHandler.HasLos;
+
+                    if (DisplayedScanNodes.Contains(nodeHandler))
                     {
-                        if (QuickItemScan.PluginConfig.ScanTimer.Value >= 0)
-                            nodeHandler.DisplayData.TimeLeft = QuickItemScan.PluginConfig.ScanTimer.Value;
-                        if (nodeHandler.ScanNode.nodeType == 2)
-                            @this.scannedScrapNum++;
+                        //if already shown update the expiration time
+                        if (visible)
+                        {
+                            if (QuickItemScan.PluginConfig.ScanTimer.Value >= 0)
+                                nodeHandler.DisplayData.TimeLeft = QuickItemScan.PluginConfig.ScanTimer.Value;
+                            if (nodeHandler.ScanNode.nodeType == 2)
+                                @this.scannedScrapNum++;
+                        }
+
+                        continue;
                     }
 
-                    continue;
+                    //skip if not visible
+                    if (!visible)
+                        continue;
+
+                    //skip if we filled all slots
+                    if (PingIndexes.Count <= 0)
+                        continue;
+
+                    //sort nodes by priority ( nodeType > distance )
+                    orderedNodes.AddOrdered(nodeHandler);
                 }
 
-                //skip if not visible
-                if (!visible)
-                    continue;
-                
-                //skip if we filled all slots
-                if (!PingIndexes.Any())
-                    continue;
-                
-                //sort nodes by priority ( nodeType > distance )
-                orderedNodes.AddOrdered(nodeHandler);
-            }
+                foreach (var nodeHandler in orderedNodes)
+                {
+                    //try grab a new scanSlot ( skip if we filled all slots )
+                    if (!PingIndexes.TryDequeue(out var index))
+                        break;
 
-            foreach (var nodeHandler in orderedNodes)
-            {
-                //try grab a new scanSlot ( skip if we filled all slots )
-                if (!PingIndexes.TryDequeue(out var index))
-                    break;
+                    DisplayedScanNodes.Add(nodeHandler);
 
-                DisplayedScanNodes.Add(nodeHandler);
+                    nodeHandler.DisplayData.Active = true;
+                    nodeHandler.DisplayData.Shown = false;
+                    nodeHandler.DisplayData.Index = index;
+                    nodeHandler.DisplayData.Element = @this.scanElements[index];
+                    if (QuickItemScan.PluginConfig.ScanTimer.Value >= 0)
+                        nodeHandler.DisplayData.TimeLeft = QuickItemScan.PluginConfig.ScanTimer.Value;
 
-                nodeHandler.DisplayData.Active = true;
-                nodeHandler.DisplayData.Shown = false;
-                nodeHandler.DisplayData.Index = index;
-                nodeHandler.DisplayData.Element = @this.scanElements[index];
-                if (QuickItemScan.PluginConfig.ScanTimer.Value >= 0)
-                    nodeHandler.DisplayData.TimeLeft = QuickItemScan.PluginConfig.ScanTimer.Value;
+                    //no idea why but adding them to this dictionary is required for them to show up in the right position
+                    //EDIT: apparently imperium somehow patches something in here
+                    @this.scanNodes[@this.scanElements[index]] = nodeHandler.ScanNode;
 
-                //no idea why but adding them to this dictionary is required for them to show up in the right position
-                //apparently used by the animators on the scan node displays
-                @this.scanNodes[@this.scanElements[index]] = nodeHandler.ScanNode;
+                    //update scrap values
+                    if (nodeHandler.ScanNode.nodeType != 2)
+                        continue;
 
-                //update scrap values
-                if (nodeHandler.ScanNode.nodeType != 2)
-                    continue;
+                    @this.totalScrapScanned += nodeHandler.ScanNode.scrapValue;
+                    @this.addedToScrapCounterThisFrame = true;
 
-                @this.totalScrapScanned += nodeHandler.ScanNode.scrapValue;
-                @this.addedToScrapCounterThisFrame = true;
-
-                @this.scannedScrapNum++;
+                    @this.scannedScrapNum++;
+                }
             }
         }
     }

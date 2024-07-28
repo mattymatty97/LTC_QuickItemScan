@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using GameNetcodeStuff;
 using QuickItemScan.Patches;
 using UnityEngine;
@@ -111,6 +112,8 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
         ScannableNodes.Remove(this);
     }
 
+    private float _losUpdateInterval = 0f;
+
     private void FixedUpdate()
     {
         //if scan-node got deleted
@@ -157,8 +160,14 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
                         HasLos = false;
                     else
                     {
-                        HasLos = !Physics.Linecast(camera.transform.position, ScanNode.transform.position, 256,
-                            QueryTriggerInteraction.Ignore);
+                        _losUpdateInterval -= Time.fixedDeltaTime;
+                        if (_losUpdateInterval <= 0)
+                        {
+                            _losUpdateInterval = 0.1f;
+                            //Linecast is expensive let's throttle it
+                            HasLos = !Physics.Linecast(camera.transform.position, ScanNode.transform.position, 256,
+                                QueryTriggerInteraction.Ignore);
+                        }
                     }
                 }
             }
