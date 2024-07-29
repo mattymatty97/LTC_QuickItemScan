@@ -54,41 +54,59 @@ internal class QuickItemScan : BaseUnityPlugin
 	}
 	internal static class PluginConfig
 	{
-		internal static ConfigEntry<float> ScanTimer;
-		internal static ConfigEntry<int> MaxScanItems;
-		internal static ConfigEntry<float> NewNodeDelay;
-		internal static ConfigEntry<int> NewNodeCount;
-		internal static ConfigEntry<int> ClusterCount;
-		internal static ConfigEntry<int> ClusterMin;
-		internal static ConfigEntry<float> ClusterDistance;
-	        
+		internal static class Scanner
+		{
+			internal static ConfigEntry<float> ScanTimer;
+			internal static ConfigEntry<int> MaxScanItems;
+			internal static ConfigEntry<float> NewNodeDelay;
+			internal static ConfigEntry<int> NewNodeCount;
+		}
+
+		internal static class Performance
+		{
+			internal static class Cluster
+			{
+				internal static ConfigEntry<int> ClusterCount;
+				internal static ConfigEntry<int> ClusterMin;
+				internal static ConfigEntry<float> ClusterDistance;
+			}
+			
+			internal static class Cheat
+			{
+				internal static ConfigEntry<bool> ScanThroughWalls;
+			}
+			
+		}
+
 		internal static ConfigEntry<bool> Verbose;
 	        
 		internal static void Init()
 		{
 			var config = INSTANCE.Config;
 			//Initialize Configs
-			ScanTimer = config.Bind("Scanner", "scan_duration", 5.0f,
+			Scanner.ScanTimer = config.Bind("Scanner", "Scan duration", 5.0f,
 				new ConfigDescription("how long the scanned items will stay on screen ( negative means no expiration )",
 					new AcceptableValueRange<float>(-1f, 20f)));
-			MaxScanItems = config.Bind("Scanner", "max_items", 100,
+			Scanner.MaxScanItems = config.Bind("Scanner", "Max items", 100,
 				new ConfigDescription("how many items can be shown on screen",
 					new AcceptableValueRange<int>(1, 999)));
-			NewNodeDelay = config.Bind("Scanner", "new_node_delay", 0.03f,
+			Scanner.NewNodeDelay = config.Bind("Scanner", "New node delay", 0.03f,
 				new ConfigDescription("how long to wait before showing a new node",
 					new AcceptableValueRange<float>(0f, 1f)));
-			NewNodeCount = config.Bind("Scanner", "new_node_count", 5,
+			Scanner.NewNodeCount = config.Bind("Scanner", "New node count", 5,
 				new ConfigDescription("how many nodes to show each cycle ( -1 means no delay )",
 					new AcceptableValueRange<int>(-1, 10)));
-			ClusterCount = config.Bind("Scanner", "cluster_count", 20,
+			Performance.Cluster.ClusterCount = config.Bind("Performance.Cluster", "Count", 20,
 				new ConfigDescription("how many clusters to compute ( 0 means disabled )",
 					new AcceptableValueRange<int>(0, 100)));
-			ClusterMin = config.Bind("Scanner", "cluster_min_items", 3,
+			Performance.Cluster.ClusterMin = config.Bind("Performance.Cluster", "Min items", 3,
 				new ConfigDescription("min number of items to form a cluster",
 					new AcceptableValueRange<int>(3, 10)));
-			ClusterDistance = config.Bind("Scanner", "cluster_distance", 60f,
+			Performance.Cluster.ClusterDistance = config.Bind("Performance.Cluster", "Max distance", 60f,
 				new ConfigDescription("max distance in pixels between points in a cluster",
 					new AcceptableValueRange<float>(0f, 300f)));
+			Performance.Cheat.ScanThroughWalls = config.Bind("Performance.Cheat", "Scan through walls", false,
+				new ConfigDescription("skip expensive Line Of Sight check!"));
                 
 			Verbose = config.Bind("Debug", "verbose", false,
 				new ConfigDescription("print more logs"));

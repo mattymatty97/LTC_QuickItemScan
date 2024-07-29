@@ -61,13 +61,13 @@ internal class ScannerPatches
         DisplayedScanNodes.Clear();
 
         var original = __instance.scanElements[0];
-        __instance.DisableAllScanElements();
+        
         //empty this so other mods do not complain
         Array.Resize(ref __instance.scanElements, 0);
 
-        Array.Resize(ref ScanDisplays, QuickItemScan.PluginConfig.MaxScanItems.Value);
+        Array.Resize(ref ScanDisplays, QuickItemScan.PluginConfig.Scanner.MaxScanItems.Value);
 
-        for (var i = 0; i < QuickItemScan.PluginConfig.MaxScanItems.Value; i++)
+        for (var i = 0; i < QuickItemScan.PluginConfig.Scanner.MaxScanItems.Value; i++)
         {
             var element = Object.Instantiate(original, original.transform.position, original.transform.rotation,
                 original.transform.parent);
@@ -76,10 +76,10 @@ internal class ScannerPatches
             ScanDisplays[i] = element;
         }
 
-        Array.Resize(ref ClusterDisplays, QuickItemScan.PluginConfig.ClusterCount.Value);
-        Array.Resize(ref ClusterNodes, QuickItemScan.PluginConfig.ClusterCount.Value);
+        Array.Resize(ref ClusterDisplays, QuickItemScan.PluginConfig.Performance.Cluster.ClusterCount.Value);
+        Array.Resize(ref ClusterNodes, QuickItemScan.PluginConfig.Performance.Cluster.ClusterCount.Value);
 
-        for (var i = 0; i < QuickItemScan.PluginConfig.ClusterCount.Value; i++)
+        for (var i = 0; i < QuickItemScan.PluginConfig.Performance.Cluster.ClusterCount.Value; i++)
         {
             var element = Object.Instantiate(original, original.transform.position, original.transform.rotation,
                 original.transform.parent);
@@ -101,7 +101,8 @@ internal class ScannerPatches
         for (var index = 0; index < ScanDisplays.Length; index++)
         {
             var element = ScanDisplays[index];
-            element.gameObject.SetActive(false);
+            if(element)
+                element.gameObject.SetActive(false);
             FreeScanDisplays.Enqueue(index);
         }
 
@@ -109,7 +110,8 @@ internal class ScannerPatches
         for (var index = 0; index < ClusterDisplays.Length; index++)
         {
             var element = ClusterDisplays[index];
-            element.gameObject.SetActive(false);
+            if(element)
+                element.gameObject.SetActive(false);
             FreeClusterDisplays.Enqueue(index);
         }
 
@@ -153,8 +155,8 @@ internal class ScannerPatches
             _newNodeInterval -= Time.deltaTime;
             if (_newNodeInterval <= 0)
             {
-                _newNodesToAdd = QuickItemScan.PluginConfig.NewNodeCount.Value;
-                _newNodeInterval = QuickItemScan.PluginConfig.NewNodeDelay.Value;
+                _newNodesToAdd = QuickItemScan.PluginConfig.Scanner.NewNodeCount.Value;
+                _newNodeInterval = QuickItemScan.PluginConfig.Scanner.NewNodeDelay.Value;
             }
         }
 
@@ -223,8 +225,8 @@ internal class ScannerPatches
                         //if already shown update the expiration time
                         if (visible)
                         {
-                            if (QuickItemScan.PluginConfig.ScanTimer.Value >= 0)
-                                nodeHandler.DisplayData.TimeLeft = QuickItemScan.PluginConfig.ScanTimer.Value;
+                            if (QuickItemScan.PluginConfig.Scanner.ScanTimer.Value >= 0)
+                                nodeHandler.DisplayData.TimeLeft = QuickItemScan.PluginConfig.Scanner.ScanTimer.Value;
                             if (nodeHandler.ScanNode.nodeType == 2)
                                 @this.scannedScrapNum++;
                         }
@@ -261,8 +263,8 @@ internal class ScannerPatches
                     nodeHandler.DisplayData.IsShown = false;
                     nodeHandler.DisplayData.Element = element;
                     nodeHandler.DisplayData.Index = index;
-                    if (QuickItemScan.PluginConfig.ScanTimer.Value >= 0)
-                        nodeHandler.DisplayData.TimeLeft = QuickItemScan.PluginConfig.ScanTimer.Value;
+                    if (QuickItemScan.PluginConfig.Scanner.ScanTimer.Value >= 0)
+                        nodeHandler.DisplayData.TimeLeft = QuickItemScan.PluginConfig.Scanner.ScanTimer.Value;
 
                     //no idea why but adding them to this dictionary is required for them to show up in the right position
                     //EDIT: apparently LCUltrawide uses this to patch ( we skip this to bypass their patch )
@@ -290,7 +292,7 @@ internal class ScannerPatches
         {
             _clusterInterval = 1f;
             //only compute if clusters are enabled
-            if (QuickItemScan.PluginConfig.ClusterCount.Value > 0)
+            if (QuickItemScan.PluginConfig.Performance.Cluster.ClusterCount.Value > 0)
                 shouldComputeClusters = true;
         }
 
@@ -308,7 +310,7 @@ internal class ScannerPatches
                 {
                     var element = handler.DisplayData.Element;
                     //update expiration time
-                    if (QuickItemScan.PluginConfig.ScanTimer.Value >= 0 && handler.DisplayData.IsShown)
+                    if (QuickItemScan.PluginConfig.Scanner.ScanTimer.Value >= 0 && handler.DisplayData.IsShown)
                         handler.DisplayData.TimeLeft -= Time.deltaTime;
                     //check if node expired or is not visible anymore
                     if (!handler || !handler.IsOnScreen || !handler.IsValid || handler.DisplayData.TimeLeft <= 0)
@@ -442,8 +444,8 @@ internal class ScannerPatches
 
         foreach (var (_, list) in clusterableData)
         {
-            using (DBSCAN.ParseClusters(list, DisplayDistance, QuickItemScan.PluginConfig.ClusterDistance.Value,
-                       QuickItemScan.PluginConfig.ClusterMin.Value,
+            using (DBSCAN.ParseClusters(list, DisplayDistance, QuickItemScan.PluginConfig.Performance.Cluster.ClusterDistance.Value,
+                       QuickItemScan.PluginConfig.Performance.Cluster.ClusterMin.Value,
                        out var clusters, out var outliers))
             {
                 if (clusters.Count > 0)
@@ -541,7 +543,7 @@ internal class ScannerPatches
     private static void DisableCluster(int index)
     {
         var element = ClusterDisplays[index];
-        if (element.gameObject.activeSelf)
+        if (element && element.gameObject.activeSelf)
             element.gameObject.SetActive(false);
     }
 

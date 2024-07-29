@@ -188,7 +188,10 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
                         HasLos = false;
                     else
                     {
-                        HasLos = !Physics.Linecast(camera.transform.position, ScanNode.transform.position, 256,
+                        if (QuickItemScan.PluginConfig.Performance.Cheat.ScanThroughWalls.Value)
+                            HasLos = true;
+                        else
+                            HasLos = !Physics.Linecast(camera.transform.position, ScanNode.transform.position, 256,
                             QueryTriggerInteraction.Ignore);
                     }
                 }
