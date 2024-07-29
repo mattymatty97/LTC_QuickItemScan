@@ -4,7 +4,7 @@
         <RootNamespace>QuickItemScan</RootNamespace>
         <AssemblyName>QuickItemScan</AssemblyName>
         <Product>QuickItemScan</Product>
-        <Version>0.0.2</Version>
+        <Version>0.0.3</Version>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <TargetFramework>netstandard2.1</TargetFramework>
         <LangVersion>Latest</LangVersion>

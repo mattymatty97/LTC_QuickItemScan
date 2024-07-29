@@ -7,6 +7,12 @@ namespace QuickItemScan.Utils;
 
 public class DBSCAN
 {
+    /**
+     * this class implements the clustering alghoritm from the pesudocode on wikipedia 
+     * <see href="https://www.wikipedia.org/wiki/DBSCAN">DBSCAN</see> article
+     */
+    
+    
     public class DisposableScan : IDisposable
     {
         protected internal DisposableScan(Action disposeAction)
