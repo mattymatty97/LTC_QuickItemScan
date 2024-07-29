@@ -6,6 +6,7 @@ using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
 using HarmonyLib;
+using UnityEngine;
 
 namespace QuickItemScan;
 
@@ -57,6 +58,9 @@ internal class QuickItemScan : BaseUnityPlugin
 		internal static ConfigEntry<int> MaxScanItems;
 		internal static ConfigEntry<float> NewNodeDelay;
 		internal static ConfigEntry<int> NewNodeCount;
+		internal static ConfigEntry<int> ClusterCount;
+		internal static ConfigEntry<int> ClusterMin;
+		internal static ConfigEntry<float> ClusterDistance;
 	        
 		internal static ConfigEntry<bool> Verbose;
 	        
@@ -70,12 +74,21 @@ internal class QuickItemScan : BaseUnityPlugin
 			MaxScanItems = config.Bind("Scanner", "max_items", 100,
 				new ConfigDescription("how many items can be shown on screen",
 					new AcceptableValueRange<int>(1, 999)));
-			NewNodeDelay = config.Bind("Scanner", "new_node_delay", 0.01f,
+			NewNodeDelay = config.Bind("Scanner", "new_node_delay", 0.03f,
 				new ConfigDescription("how long to wait before showing a new node",
 					new AcceptableValueRange<float>(0f, 1f)));
-			NewNodeCount = config.Bind("Scanner", "new_node_count", 1,
+			NewNodeCount = config.Bind("Scanner", "new_node_count", 5,
 				new ConfigDescription("how many nodes to show each cycle ( -1 means no delay )",
 					new AcceptableValueRange<int>(-1, 10)));
+			ClusterCount = config.Bind("Scanner", "cluster_count", 20,
+				new ConfigDescription("how many clusters to compute ( 0 means disabled )",
+					new AcceptableValueRange<int>(0, 100)));
+			ClusterMin = config.Bind("Scanner", "cluster_min_items", 3,
+				new ConfigDescription("min number of items to form a cluster",
+					new AcceptableValueRange<int>(3, 10)));
+			ClusterDistance = config.Bind("Scanner", "cluster_distance", 60f,
+				new ConfigDescription("max distance in pixels between points in a cluster",
+					new AcceptableValueRange<float>(0f, 300f)));
                 
 			Verbose = config.Bind("Debug", "verbose", false,
 				new ConfigDescription("print more logs"));

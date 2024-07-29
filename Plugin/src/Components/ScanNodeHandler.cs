@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using GameNetcodeStuff;
 using QuickItemScan.Patches;
 using UnityEngine;
@@ -13,23 +12,44 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
     
     public class ScanNodeComponents
     {
+        protected internal ScanNodeComponents() {}
+
         public GrabbableObject GrabbableObject { get; internal set; }
         public EnemyAI EnemyAI { get; internal set; }
         public TerminalAccessibleObject TerminalAccessibleObject { get; internal set; }
         public Renderer ScanNodeRenderer { get; internal set; }
     }
     
+    public class ScanNodeClusterData
+    {
+        protected internal ScanNodeClusterData() {}
+
+        public int Index { get; internal set; } = -1;
+
+        public RectTransform Element { get; internal set; }
+        
+        public bool HasCluster { get; internal set; }
+        
+        public bool IsMaster { get; internal set; }
+        
+    }
+    
     public class ScanNodeDisplayData
     {
+        protected internal ScanNodeDisplayData() {}
+
         public int Index { get; internal set; } = -1;
         public float TimeLeft { get; internal set; } = 1;
         public RectTransform Element { get; internal set; }
-        public bool Shown { get; internal set; }
-        public bool Active { get; internal set; }
+        public bool IsShown { get; internal set; }
+        public bool IsActive { get; internal set; }
+        public Vector3 ScreenPos { get; internal set; }
     }
 
     public ScanNodeComponents Components { get; } = new();
     public ScanNodeDisplayData DisplayData { get; } = new();
+    
+    public ScanNodeClusterData ClusterData { get; } = new();
     
     private int _cachedMaxDistance = 0;
     
@@ -112,7 +132,7 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
         ScannableNodes.Remove(this);
     }
 
-    private float _losUpdateInterval = 0f;
+    private float _updateInterval = 0f;
 
     private void FixedUpdate()
     {
@@ -125,17 +145,25 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
         if (_cachedMaxDistance != ScanNode.maxRange)
         {
             _cachedMaxDistance = ScanNode.maxRange;
-            
+
             //SphereCollider will shrink based on the largest scale, make sure to account for that in the radius
             var scale = transform.lossyScale;
             var factor = Math.Max(scale.x, Math.Max(scale.y, scale.z));
 
             _scanRadiusTrigger.radius = _cachedMaxDistance / factor;
         }
-        
-        //do not compute if not needed
+    }
+
+    private void LateUpdate()
+    {
         if ( ShouldUpdate() )
         {
+            _updateInterval -= Time.deltaTime;
+            if (_updateInterval > 0)
+                return;
+
+            _updateInterval = 0.1f;
+            
             var localPlayer = GameNetworkManager.Instance.localPlayerController;
             var playerLocation = localPlayer.transform.position;
             var scanNodePosition = ScanNode.transform.position;
@@ -160,14 +188,8 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
                         HasLos = false;
                     else
                     {
-                        _losUpdateInterval -= Time.fixedDeltaTime;
-                        if (_losUpdateInterval <= 0)
-                        {
-                            _losUpdateInterval = 0.1f;
-                            //Linecast is expensive let's throttle it
-                            HasLos = !Physics.Linecast(camera.transform.position, ScanNode.transform.position, 256,
-                                QueryTriggerInteraction.Ignore);
-                        }
+                        HasLos = !Physics.Linecast(camera.transform.position, ScanNode.transform.position, 256,
+                            QueryTriggerInteraction.Ignore);
                     }
                 }
             }
@@ -182,7 +204,7 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
 
     private bool ShouldUpdate()
     {
-        return DisplayData.Active || ( InMaxRange && ScannerPatches.CanScan());
+        return DisplayData.IsActive || ( InMaxRange && ScannerPatches.CanScan());
     }
     
     private bool CheckValid()
@@ -208,23 +230,28 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
     public int CompareTo(ScanNodeHandler other)
     {
         if (!ScanNode)
-            return -1;
+            return 1;
 
         if (!other)
-            return 1;
+            return -1;
         
         var tmp = IsOnScreen.CompareTo(other.IsOnScreen);
         if (tmp != 0)
-            return tmp;
+            return -tmp;
         
         tmp = IsValid.CompareTo(other.IsValid);
         if (tmp != 0)
-            return tmp;
+            return -tmp;
         
         tmp = ScanNode.nodeType.CompareTo(other.ScanNode.nodeType);
         if (tmp != 0)
             return tmp;
 
         return DistanceToPlayer.CompareTo(other.DistanceToPlayer);
+    }
+
+    public override string ToString()
+    {
+        return $"{ScanNode.headerText}({GetInstanceID()})";
     }
 }
