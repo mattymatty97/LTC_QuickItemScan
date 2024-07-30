@@ -4,7 +4,7 @@
         <RootNamespace>QuickItemScan.Preloader</RootNamespace>
         <AssemblyName>QuickItemScan.Preloader</AssemblyName>
         <Product>QuickItemScan.Preloader</Product>
-        <Version>0.0.4</Version>
+        <Version>0.0.5</Version>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <TargetFramework>netstandard2.1</TargetFramework>
         <LangVersion>Latest</LangVersion>

@@ -6,6 +6,8 @@ using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
 using HarmonyLib;
+using MonoMod.RuntimeDetour;
+using QuickItemScan.Patches;
 
 namespace QuickItemScan;
 
@@ -14,12 +16,12 @@ namespace QuickItemScan;
 [BepInDependency("ainavt.lc.lethalconfig", Flags:BepInDependency.DependencyFlags.SoftDependency)]
 internal class QuickItemScan : BaseUnityPlugin
 {
-		
+	public static readonly List<Hook> Hooks = [];
 	public static QuickItemScan INSTANCE { get; private set; }
 		
 	public const string GUID = "mattymatty.QuickItemScan";
 	public const string NAME = "QuickItemScan";
-	public const string VERSION = "0.0.4";
+	public const string VERSION = "0.0.5";
 
 	internal static ManualLogSource Log;
             
@@ -41,6 +43,7 @@ internal class QuickItemScan : BaseUnityPlugin
 			Log.LogInfo("Patching Methods");
 			var harmony = new Harmony(GUID);
 			harmony.PatchAll(Assembly.GetExecutingAssembly());
+			ScannerPatches.InitMonoMod();
 				
 			Log.LogInfo(NAME + " v" + VERSION + " Loaded!");
 			if (AsyncLoggerProxy.Enabled)
@@ -69,6 +72,7 @@ internal class QuickItemScan : BaseUnityPlugin
 				internal static ConfigEntry<int> MinItems;
 				internal static ConfigEntry<float> MaxDistance;
 				internal static ConfigEntry<bool> IgnoreDistance;
+				internal static ConfigEntry<bool> UseClosest;
 			}
 			
 			internal static class Cheat
@@ -116,6 +120,8 @@ internal class QuickItemScan : BaseUnityPlugin
 					new AcceptableValueRange<float>(0f, 15f)));
 			Performance.Cluster.IgnoreDistance = config.Bind("Performance.Cluster", "Bypass distance", false,
 				new ConfigDescription("always cluster all items on screen ( ignore distance )"));
+			Performance.Cluster.UseClosest = config.Bind("Performance.Cluster", "Use Closest", false,
+				new ConfigDescription("cluster node will show on the closest node instead of computing the median"));
 			//Performance.Cheat
 			Performance.Cheat.ScanThroughWalls = config.Bind("Performance.Cheat", "Scan through walls", false,
 				new ConfigDescription("skip expensive Line Of Sight check!"));

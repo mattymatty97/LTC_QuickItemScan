@@ -2,7 +2,9 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
+using GameNetcodeStuff;
 using HarmonyLib;
+using MonoMod.RuntimeDetour;
 using QuickItemScan.Components;
 using QuickItemScan.Utils;
 using TMPro;
@@ -28,6 +30,7 @@ internal class ScannerPatches
     private static float _newNodeInterval;
     private static float _clusterInterval;
     private static int _newNodesToAdd;
+    private static RectTransform _screenRect;
 
     private static readonly IComparer<ScanNodeHandler> ZComparer = Comparer<ScanNodeHandler>.Create((n1, n2) =>
         n1.DisplayData.ScreenPos.z.CompareTo(n2.DisplayData.ScreenPos.z));
@@ -150,13 +153,21 @@ internal class ScannerPatches
         __instance.totalScrapScannedDisplayNum = 0;
     }
 
-    [HarmonyPatch(typeof(HUDManager), nameof(HUDManager.UpdateScanNodes))]
-    [HarmonyPrefix]
-    private static bool RewriteUpdateScan(HUDManager __instance, bool __runOriginal)
+    internal static void InitMonoMod()
     {
-        if (!__runOriginal)
-            return false;
-
+        QuickItemScan.Hooks.Add(
+            new Hook(
+                AccessTools.Method(typeof(HUDManager), nameof(HUDManager.UpdateScanNodes)),
+                RewriteUpdateScan,
+                new HookConfig()
+                {
+                    Priority = -99
+                }
+                ));
+    }
+    
+    private static void RewriteUpdateScan(Action<HUDManager, PlayerControllerB> orig, HUDManager self, PlayerControllerB controllerB)
+    {
         //track how many nodes can be added
         if (_newNodesToAdd == 0)
         {
@@ -168,22 +179,20 @@ internal class ScannerPatches
             }
         }
 
-        TryAddNewNodes(__instance);
+        TryAddNewNodes(self);
 
-        var scannedScrap = UpdateNodesOnScreen(__instance);
+        var scannedScrap = UpdateNodesOnScreen(self);
 
-        UpdateClusterOnScreen(__instance);
+        UpdateClusterOnScreen(self);
 
         if (!scannedScrap)
         {
-            __instance.totalScrapScanned = 0;
-            __instance.totalScrapScannedDisplayNum = 0;
-            __instance.addToDisplayTotalInterval = 0.35f;
+            self.totalScrapScanned = 0;
+            self.totalScrapScannedDisplayNum = 0;
+            self.addToDisplayTotalInterval = 0.35f;
         }
 
-        __instance.scanInfoAnimator.SetBool(DisplayHash, __instance.scannedScrapNum >= 2 && scannedScrap);
-
-        return false;
+        self.scanInfoAnimator.SetBool(DisplayHash, self.scannedScrapNum >= 2 && scannedScrap);
     }
 
     [HarmonyPrefix]
@@ -308,8 +317,12 @@ internal class ScannerPatches
         var scrapOnScreen = false;
         @this.totalScrapScanned = 0;
 
-        var playerScreen = @this.playerScreenShakeAnimator.gameObject;
-        var screenRect = playerScreen.GetComponent<RectTransform>().rect;
+        if (!_screenRect)
+        {
+            var playerScreen = @this.playerScreenShakeAnimator.gameObject;
+            _screenRect = playerScreen.GetComponent<RectTransform>();
+        }
+        var screenRect = _screenRect.rect;
 
         using (DictionaryPool<string, List<ScanNodeHandler>>.Get(out var clusterableNodes))
         {
@@ -389,7 +402,7 @@ internal class ScannerPatches
                         clusterableNodes[scanNode.headerText] = list;
                     }
 
-                    list.Add(handler);
+                    list.AddOrdered(handler, ZComparer);
                 }
 
                 //remove all expired nodes
@@ -451,8 +464,12 @@ internal class ScannerPatches
     {
         ResetClusters();
         
-        var playerScreen = @this.playerScreenShakeAnimator.gameObject;
-        var screenRect = playerScreen.GetComponent<RectTransform>().rect;
+        if (!_screenRect)
+        {
+            var playerScreen = @this.playerScreenShakeAnimator.gameObject;
+            _screenRect = playerScreen.GetComponent<RectTransform>();
+        }
+        var screenRect = _screenRect.rect;
         var distance = Math.Max(screenRect.width, screenRect.height)
             * (QuickItemScan.PluginConfig.Performance.Cluster.MaxDistance.Value / 100f);
         
@@ -470,7 +487,7 @@ internal class ScannerPatches
                     if (clusters.Count > 0)
                         foreach (var cluster in clusters)
                         {
-                            ProcessCluster(outliers, cluster);
+                            ProcessCluster(cluster, outliers);
                         }
 
                     ProcessOutliers(outliers);
@@ -496,7 +513,7 @@ internal class ScannerPatches
         
         return;
 
-        void ProcessCluster(List<ScanNodeHandler> outliers, List<ScanNodeHandler> cluster)
+        void ProcessCluster(List<ScanNodeHandler> cluster, List<ScanNodeHandler> outliers)
         {
             if (!FreeClusterDisplays.TryDequeue(out var index))
             {
@@ -505,8 +522,6 @@ internal class ScannerPatches
             }
 
             var element = ClusterDisplays[index];
-
-            cluster.Sort(ZComparer);
 
             for (var i = 0; i < cluster.Count; i++)
             {
@@ -537,8 +552,12 @@ internal class ScannerPatches
 
     private static void UpdateClusterOnScreen(HUDManager @this)
     {
-        var playerScreen = @this.playerScreenShakeAnimator.gameObject;
-        var screenRect = playerScreen.GetComponent<RectTransform>().rect;
+        if (!_screenRect)
+        {
+            var playerScreen = @this.playerScreenShakeAnimator.gameObject;
+            _screenRect = playerScreen.GetComponent<RectTransform>();
+        }
+        var screenRect = _screenRect.rect;
         var center = new Vector2(screenRect.xMin + (screenRect.width / 2),
             screenRect.yMin + (screenRect.height / 2));
         
@@ -577,12 +596,19 @@ internal class ScannerPatches
                     }
                 }
 
-                using (ListPool<Vector2>.Get(out var points))
+                if (!QuickItemScan.PluginConfig.Performance.Cluster.UseClosest.Value)
                 {
-                    points.AddRange(cluster.Select(nodeHandler => (Vector2)nodeHandler.DisplayData.ScreenPos));
-                    var medianPoint = points.GetMedianFromPoint(center);
-                    
-                    element.anchoredPosition = medianPoint;
+                    using (ListPool<Vector2>.Get(out var points))
+                    {
+                        points.AddRange(cluster.Select(nodeHandler => (Vector2)nodeHandler.DisplayData.ScreenPos));
+                        var medianPoint = points.GetMedianFromPoint(center);
+
+                        element.anchoredPosition = medianPoint;
+                    }
+                }
+                else
+                {
+                    element.anchoredPosition = target.DisplayData.ScreenPos;
                 }
 
                 foreach (var node in cluster)

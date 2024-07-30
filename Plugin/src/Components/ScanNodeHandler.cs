@@ -14,7 +14,7 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
     {
         protected internal ScanNodeComponents() {}
 
-        public GrabbableObject GrabbableObject { get; internal set; }
+        public GrabbableObject GrabbableObject { get; internal set; } = null!;
         public EnemyAI EnemyAI { get; internal set; }
         public TerminalAccessibleObject TerminalAccessibleObject { get; internal set; }
         public Renderer ScanNodeRenderer { get; internal set; }
