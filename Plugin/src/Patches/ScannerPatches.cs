@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.RegularExpressions;
 using GameNetcodeStuff;
 using HarmonyLib;
 using MonoMod.RuntimeDetour;
@@ -210,18 +209,18 @@ internal class ScannerPatches
         return HUDManager.Instance?.playerPingingScan > 0 && FreeScanDisplays.Count > 0;
     }
 
-    private static void TryAddNewNodes(HUDManager @this)
+    private static void TryAddNewNodes(HUDManager hudManager)
     {
-        @this.updateScanInterval -= Time.deltaTime;
-        if (@this.updateScanInterval > 0)
+        hudManager.updateScanInterval -= Time.deltaTime;
+        if (hudManager.updateScanInterval > 0)
             return;
-        @this.updateScanInterval = 0.1f;
+        hudManager.updateScanInterval = 0.1f;
 
         //only run when the player is scanning ( 0.3f after click )
-        if (@this.playerPingingScan <= 0)
+        if (hudManager.playerPingingScan <= 0)
             return;
 
-        @this.scannedScrapNum = 0;
+        hudManager.scannedScrapNum = 0;
 
         if (ScanNodeHandler.ScannableNodes.Count > 0)
             using (ListPool<ScanNodeHandler>.Get(out var orderedNodes))
@@ -245,7 +244,7 @@ internal class ScannerPatches
                             if (QuickItemScan.PluginConfig.Scanner.ScanTimer.Value >= 0)
                                 nodeHandler.DisplayData.TimeLeft = QuickItemScan.PluginConfig.Scanner.ScanTimer.Value;
                             if (nodeHandler.ScanNode.nodeType == 2)
-                                @this.scannedScrapNum++;
+                                hudManager.scannedScrapNum++;
                         }
 
                         continue;
@@ -294,7 +293,7 @@ internal class ScannerPatches
                     //@this.totalScrapScanned += nodeHandler.ScanNode.scrapValue;
                     //@this.addedToScrapCounterThisFrame = true;
 
-                    @this.scannedScrapNum++;
+                    hudManager.scannedScrapNum++;
                 }
             }
     }
@@ -369,7 +368,7 @@ internal class ScannerPatches
                     //update position on screen ( use patch from LCUltrawide for compatibility )
 
                     var viewportPoint =
-                        GameNetworkManager.Instance.localPlayerController.gameplayCamera.WorldToViewportPoint(
+                        StartOfRound.Instance.localPlayerController.gameplayCamera.WorldToViewportPoint(
                             scanNode.transform.position);
                     var screenPoint = new Vector3(screenRect.xMin + screenRect.width * viewportPoint.x,
                         screenRect.yMin + screenRect.height * viewportPoint.y, viewportPoint.z);

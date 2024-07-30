@@ -14,7 +14,7 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
     {
         protected internal ScanNodeComponents() {}
 
-        public GrabbableObject GrabbableObject { get; internal set; } = null!;
+        public GrabbableObject GrabbableObject { get; internal set; }
         public EnemyAI EnemyAI { get; internal set; }
         public TerminalAccessibleObject TerminalAccessibleObject { get; internal set; }
         public Renderer ScanNodeRenderer { get; internal set; }
@@ -69,7 +69,13 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
         Components.EnemyAI                  = gameObject.GetComponentInParent<EnemyAI>();
         Components.TerminalAccessibleObject = gameObject.GetComponentInParent<TerminalAccessibleObject>();
         Components.ScanNodeRenderer         = ScanNode.GetComponent<Renderer>();
-        
+        /*if (!Components.ScanNodeRenderer)
+        {
+            QuickItemScan.Log.LogDebug($"{this} is missing a Renderer");
+            Components.ScanNodeRenderer = gameObject.AddComponent<Renderer>();
+            Components.ScanNodeRenderer.enabled = false;
+        }*/
+
         //add scanSphere
         _scanRadiusTrigger = gameObject.AddComponent<SphereCollider>();
         _scanRadiusTrigger.isTrigger = true;
@@ -86,7 +92,7 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
         if (gameNetworkManager == null || controller==null || controller != gameNetworkManager.localPlayerController)
             return;
         
-        if (gameNetworkManager.localPlayerController.isPlayerDead)
+        if (controller.isPlayerDead)
             return;
         
         if(QuickItemScan.PluginConfig.Debug.Verbose.Value)
@@ -156,6 +162,11 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
 
     private void LateUpdate()
     {
+        //if scan-node got deleted
+        //TODO: maybe delete ourselves too
+        if (!ScanNode)
+            return;
+        
         if ( ShouldUpdate() )
         {
             _updateInterval -= Time.deltaTime;
@@ -164,12 +175,24 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
 
             _updateInterval = 0.1f;
             
+            if (!GameNetworkManager.Instance)
+                return;
+            
             var localPlayer = GameNetworkManager.Instance.localPlayerController;
+            if (!localPlayer)
+                return;
+            
             var playerLocation = localPlayer.transform.position;
             var scanNodePosition = ScanNode.transform.position;
             var camera = localPlayer.gameplayCamera;
 
-            IsOnScreen = Components.ScanNodeRenderer.isVisible;
+            if (Components.ScanNodeRenderer)
+                IsOnScreen = Components.ScanNodeRenderer.isVisible;
+            else
+            {
+                var screenPoint = camera.WorldToScreenPoint(ScanNode.transform.position);
+                IsOnScreen = Screen.safeArea.Contains(screenPoint);
+            }
             
             //check if this node is supposed to be scannable
 

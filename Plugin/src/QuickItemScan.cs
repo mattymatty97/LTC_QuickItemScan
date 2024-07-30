@@ -21,7 +21,7 @@ internal class QuickItemScan : BaseUnityPlugin
 		
 	public const string GUID = "mattymatty.QuickItemScan";
 	public const string NAME = "QuickItemScan";
-	public const string VERSION = "0.0.5";
+	public const string VERSION = "0.0.6";
 
 	internal static ManualLogSource Log;
             
