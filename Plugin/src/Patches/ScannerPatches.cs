@@ -17,6 +17,7 @@ internal class ScannerPatches
 {
     private static RectTransform[] ScanDisplays = [];
     private static RectTransform[] ClusterDisplays = [];
+    private static string[] ClusterDisplayAssignment = [];
     private static List<ScanNodeHandler>[] ClusterNodes = [];
     private static readonly Queue<int> FreeScanDisplays = [];
     private static readonly Queue<int> FreeClusterDisplays = [];
@@ -76,16 +77,18 @@ internal class ScannerPatches
             ScanDisplays[i] = element;
         }
 
-        Array.Resize(ref ClusterDisplays, QuickItemScan.PluginConfig.Performance.Cluster.ClusterCount.Value);
-        Array.Resize(ref ClusterNodes, QuickItemScan.PluginConfig.Performance.Cluster.ClusterCount.Value);
+        Array.Resize(ref ClusterDisplays, QuickItemScan.PluginConfig.Performance.Cluster.NodeCount.Value);
+        Array.Resize(ref ClusterDisplayAssignment, QuickItemScan.PluginConfig.Performance.Cluster.NodeCount.Value);
+        Array.Resize(ref ClusterNodes, QuickItemScan.PluginConfig.Performance.Cluster.NodeCount.Value);
 
-        for (var i = 0; i < QuickItemScan.PluginConfig.Performance.Cluster.ClusterCount.Value; i++)
+        for (var i = 0; i < QuickItemScan.PluginConfig.Performance.Cluster.NodeCount.Value; i++)
         {
             var element = Object.Instantiate(original, original.transform.position, original.transform.rotation,
                 original.transform.parent);
             element.transform.name = $"cluster {original.transform.name}-{i}";
             FreeClusterDisplays.Enqueue(i);
             ClusterDisplays[i] = element;
+            ClusterDisplayAssignment[i] = null;
             var nodes = ClusterNodes[i];
             if (nodes == null) ClusterNodes[i] = nodes = new List<ScanNodeHandler>();
 
@@ -113,6 +116,11 @@ internal class ScannerPatches
             if(element)
                 element.gameObject.SetActive(false);
             FreeClusterDisplays.Enqueue(index);
+        }
+        
+        for (var index = 0; index < ClusterDisplayAssignment.Length; index++)
+        {
+            ClusterDisplayAssignment[index] = null;
         }
 
         foreach (var list in ClusterNodes)
@@ -269,6 +277,7 @@ internal class ScannerPatches
                     //no idea why but adding them to this dictionary is required for them to show up in the right position
                     //EDIT: apparently LCUltrawide uses this to patch ( we skip this to bypass their patch )
                     //@this.scanNodes[element] = nodeHandler.ScanNode;
+                    
                     //update scrap values
                     if (nodeHandler.ScanNode.nodeType != 2)
                         continue;
@@ -292,7 +301,7 @@ internal class ScannerPatches
         {
             _clusterInterval = 1f;
             //only compute if clusters are enabled
-            if (QuickItemScan.PluginConfig.Performance.Cluster.ClusterCount.Value > 0)
+            if (QuickItemScan.PluginConfig.Performance.Cluster.NodeCount.Value > 0)
                 shouldComputeClusters = true;
         }
 
@@ -441,55 +450,98 @@ internal class ScannerPatches
     private static void ComputeClusterNodes(HUDManager @this, Dictionary<string, List<ScanNodeHandler>> clusterableData)
     {
         ResetClusters();
-
+        
+        var playerScreen = @this.playerScreenShakeAnimator.gameObject;
+        var screenRect = playerScreen.GetComponent<RectTransform>().rect;
+        var distance = Math.Max(screenRect.width, screenRect.height)
+            * (QuickItemScan.PluginConfig.Performance.Cluster.MaxDistance.Value / 100f);
+        
+        if(QuickItemScan.PluginConfig.Debug.Verbose.Value)
+            QuickItemScan.Log.LogDebug($"Distance is: {distance}");
+            
         foreach (var (_, list) in clusterableData)
         {
-            using (DBSCAN.ParseClusters(list, DisplayDistance, QuickItemScan.PluginConfig.Performance.Cluster.ClusterDistance.Value,
-                       QuickItemScan.PluginConfig.Performance.Cluster.ClusterMin.Value,
-                       out var clusters, out var outliers))
+            if (!QuickItemScan.PluginConfig.Performance.Cluster.IgnoreDistance.Value)
             {
-                if (clusters.Count > 0)
-                    foreach (var cluster in clusters)
-                    {
-                        if (!FreeClusterDisplays.TryDequeue(out var index))
+                using (DBSCAN.ParseClusters(list, DisplayDistance, distance,
+                           QuickItemScan.PluginConfig.Performance.Cluster.MinItems.Value,
+                           out var clusters, out var outliers))
+                {
+                    if (clusters.Count > 0)
+                        foreach (var cluster in clusters)
                         {
-                            outliers.AddRange(cluster);
-                            continue;
+                            ProcessCluster(outliers, cluster);
                         }
 
-                        var element = ClusterDisplays[index];
-
-                        cluster.Sort(ZComparer);
-
-                        for (var i = 0; i < cluster.Count; i++)
-                        {
-                            var node = cluster[i];
-
-                            node.ClusterData.Element = element;
-                            node.ClusterData.Index = index;
-                            node.ClusterData.HasCluster = true;
-
-                            ClusterNodes[index].AddOrdered(node, ZComparer);
-                        }
-                    }
-
-                if (outliers.Count > 0)
-                    foreach (var nodeHandler in outliers)
+                    ProcessOutliers(outliers);
+                }
+            }
+            else
+            {
+                using (ListPool<ScanNodeHandler>.Get(out var outliers))
+                {
+                    if (list.Count > QuickItemScan.PluginConfig.Performance.Cluster.MinItems.Value)
                     {
-                        if (!nodeHandler.ClusterData.HasCluster)
-                            continue;
-                        nodeHandler.ClusterData.HasCluster = false;
-                        nodeHandler.ClusterData.IsMaster = false;
-
-                        //force it to redraw the original
-                        nodeHandler.DisplayData.IsShown = false;
+                        ProcessCluster(list, outliers);
                     }
+                    else
+                    {
+                        outliers.AddRange(list);
+                    } 
+                    
+                    ProcessOutliers(outliers);
+                }
+            }
+        }
+        
+        return;
+
+        void ProcessCluster(List<ScanNodeHandler> outliers, List<ScanNodeHandler> cluster)
+        {
+            if (!FreeClusterDisplays.TryDequeue(out var index))
+            {
+                outliers.AddRange(cluster);
+                return;
+            }
+
+            var element = ClusterDisplays[index];
+
+            cluster.Sort(ZComparer);
+
+            for (var i = 0; i < cluster.Count; i++)
+            {
+                var node = cluster[i];
+
+                node.ClusterData.Element = element;
+                node.ClusterData.Index = index;
+                node.ClusterData.HasCluster = true;
+
+                ClusterNodes[index].AddOrdered(node, ZComparer);
+            }
+        }
+
+        void ProcessOutliers(List<ScanNodeHandler> outliers)
+        {
+            foreach (var nodeHandler in outliers)
+            {
+                if (!nodeHandler.ClusterData.HasCluster)
+                    continue;
+                nodeHandler.ClusterData.HasCluster = false;
+                nodeHandler.ClusterData.IsMaster = false;
+
+                //force it to redraw the original
+                nodeHandler.DisplayData.IsShown = false;
             }
         }
     }
 
     private static void UpdateClusterOnScreen(HUDManager @this)
     {
+        var playerScreen = @this.playerScreenShakeAnimator.gameObject;
+        var screenRect = playerScreen.GetComponent<RectTransform>().rect;
+        var center = new Vector2(screenRect.xMin + (screenRect.width / 2),
+            screenRect.yMin + (screenRect.height / 2));
+        
         for (var i = 0; i < ClusterNodes.Length; i++)
         {
             var cluster = ClusterNodes[i];
@@ -499,29 +551,39 @@ internal class ScannerPatches
                 var element = ClusterDisplays[i];
 
                 var target = cluster[0];
-
-
+                
                 var scrapValue = 0;
 
                 var isScrap = target.ScanNode.nodeType == 2;
                 if (isScrap)
                     scrapValue = cluster.Select(n => n.ScanNode.scrapValue).Sum();
 
+                var scanNode = target.ScanNode;
+                
                 if (!element.gameObject.activeSelf)
                 {
-                    var scanNode = target.ScanNode;
                     element.gameObject.SetActive(true);
                     element.GetComponent<Animator>().SetInteger(ColorNumberHash, scanNode.nodeType);
-                    
+                }
+
+                if (!string.Equals(ClusterDisplayAssignment[i], scanNode.headerText))
+                {
+                    ClusterDisplayAssignment[i] = scanNode.headerText;
                     var scanElementText = element.gameObject.GetComponentsInChildren<TextMeshProUGUI>();
                     if (scanElementText.Length > 1)
                     {
                         scanElementText[0].text = $"{scanNode.headerText} x{cluster.Count}";
-                        scanElementText[1].text = isScrap ? $"Sum: {scrapValue}" : scanNode.subText;
+                        scanElementText[1].text = isScrap ? $"Value: {scrapValue}" : scanNode.subText;
                     }
                 }
 
-                element.anchoredPosition = target.DisplayData.ScreenPos;
+                using (ListPool<Vector2>.Get(out var points))
+                {
+                    points.AddRange(cluster.Select(nodeHandler => (Vector2)nodeHandler.DisplayData.ScreenPos));
+                    var medianPoint = points.GetMedianFromPoint(center);
+                    
+                    element.anchoredPosition = medianPoint;
+                }
 
                 foreach (var node in cluster)
                 {
@@ -543,6 +605,7 @@ internal class ScannerPatches
     private static void DisableCluster(int index)
     {
         var element = ClusterDisplays[index];
+        ClusterDisplayAssignment[index] = null;
         if (element && element.gameObject.activeSelf)
             element.gameObject.SetActive(false);
     }

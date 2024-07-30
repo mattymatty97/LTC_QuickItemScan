@@ -6,7 +6,6 @@ using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
 using HarmonyLib;
-using UnityEngine;
 
 namespace QuickItemScan;
 
@@ -20,7 +19,7 @@ internal class QuickItemScan : BaseUnityPlugin
 		
 	public const string GUID = "mattymatty.QuickItemScan";
 	public const string NAME = "QuickItemScan";
-	public const string VERSION = "0.0.3";
+	public const string VERSION = "0.0.4";
 
 	internal static ManualLogSource Log;
             
@@ -66,9 +65,10 @@ internal class QuickItemScan : BaseUnityPlugin
 		{
 			internal static class Cluster
 			{
-				internal static ConfigEntry<int> ClusterCount;
-				internal static ConfigEntry<int> ClusterMin;
-				internal static ConfigEntry<float> ClusterDistance;
+				internal static ConfigEntry<int> NodeCount;
+				internal static ConfigEntry<int> MinItems;
+				internal static ConfigEntry<float> MaxDistance;
+				internal static ConfigEntry<bool> IgnoreDistance;
 			}
 			
 			internal static class Cheat
@@ -77,39 +77,77 @@ internal class QuickItemScan : BaseUnityPlugin
 			}
 			
 		}
+		
+		internal static class Optional
+		{
+			internal static ConfigEntry<bool> ScanOpenDoors;
+		}
 
-		internal static ConfigEntry<bool> Verbose;
-	        
+		internal static class Debug
+		{
+			internal static ConfigEntry<bool> Verbose;
+		}
+
 		internal static void Init()
 		{
 			var config = INSTANCE.Config;
 			//Initialize Configs
-			Scanner.ScanTimer = config.Bind("Scanner", "Scan duration", 5.0f,
+			Scanner.ScanTimer = config.Bind("Scanner", "Expire after", 15.0f,
 				new ConfigDescription("how long the scanned items will stay on screen ( negative means no expiration )",
 					new AcceptableValueRange<float>(-1f, 20f)));
-			Scanner.MaxScanItems = config.Bind("Scanner", "Max items", 100,
+			Scanner.MaxScanItems = config.Bind("Scanner", "Max nodes", 100,
 				new ConfigDescription("how many items can be shown on screen",
 					new AcceptableValueRange<int>(1, 999)));
 			Scanner.NewNodeDelay = config.Bind("Scanner", "New node delay", 0.03f,
 				new ConfigDescription("how long to wait before showing a new node",
 					new AcceptableValueRange<float>(0f, 1f)));
 			Scanner.NewNodeCount = config.Bind("Scanner", "New node count", 5,
-				new ConfigDescription("how many nodes to show each cycle ( -1 means no delay )",
+				new ConfigDescription("how many new nodes to show each cycle ( -1 means no delay )",
 					new AcceptableValueRange<int>(-1, 10)));
-			Performance.Cluster.ClusterCount = config.Bind("Performance.Cluster", "Count", 20,
+			//Performance.Cluster
+			Performance.Cluster.NodeCount = config.Bind("Performance.Cluster", "Count", 20,
 				new ConfigDescription("how many clusters to compute ( 0 means disabled )",
 					new AcceptableValueRange<int>(0, 100)));
-			Performance.Cluster.ClusterMin = config.Bind("Performance.Cluster", "Min items", 3,
+			Performance.Cluster.MinItems = config.Bind("Performance.Cluster", "Min items", 3,
 				new ConfigDescription("min number of items to form a cluster",
 					new AcceptableValueRange<int>(3, 10)));
-			Performance.Cluster.ClusterDistance = config.Bind("Performance.Cluster", "Max distance", 60f,
-				new ConfigDescription("max distance in pixels between points in a cluster",
-					new AcceptableValueRange<float>(0f, 300f)));
+			Performance.Cluster.MaxDistance = config.Bind("Performance.Cluster", "Max distance %", 8.5f,
+				new ConfigDescription("% distance of screen between points in a cluster",
+					new AcceptableValueRange<float>(0f, 15f)));
+			Performance.Cluster.IgnoreDistance = config.Bind("Performance.Cluster", "Bypass distance", false,
+				new ConfigDescription("always cluster all items on screen ( ignore distance )"));
+			//Performance.Cheat
 			Performance.Cheat.ScanThroughWalls = config.Bind("Performance.Cheat", "Scan through walls", false,
 				new ConfigDescription("skip expensive Line Of Sight check!"));
-                
-			Verbose = config.Bind("Debug", "verbose", false,
+			//Optional
+			Optional.ScanOpenDoors = config.Bind("Optional", "Scan Open Doors", false,
+				new ConfigDescription("allow scanning open powered doors"));
+
+			//Debug
+			Debug.Verbose = config.Bind("Debug", "verbose", false,
 				new ConfigDescription("print more logs"));
+			
+			if (LethalConfigProxy.Enabled)
+			{
+				LethalConfigProxy.AddConfig(Scanner.ScanTimer);
+				LethalConfigProxy.AddConfig(Scanner.MaxScanItems, true);
+				LethalConfigProxy.AddConfig(Scanner.NewNodeCount);
+				LethalConfigProxy.AddConfig(Scanner.NewNodeDelay);
+				//
+				LethalConfigProxy.AddConfig(Performance.Cluster.NodeCount, true);
+				LethalConfigProxy.AddConfig(Performance.Cluster.MinItems);
+				LethalConfigProxy.AddConfig(Performance.Cluster.MaxDistance);
+				LethalConfigProxy.AddConfig(Performance.Cluster.IgnoreDistance);
+				//
+				LethalConfigProxy.AddConfig(Performance.Cheat.ScanThroughWalls);
+				//
+				LethalConfigProxy.AddConfig(Optional.ScanOpenDoors);
+				//
+				LethalConfigProxy.AddConfig(Debug.Verbose);
+			}
+			
+			
+            CleanAndSave();
 		}
 
 		internal static void CleanAndSave()

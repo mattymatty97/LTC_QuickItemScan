@@ -59,7 +59,7 @@ public class DBSCAN
                         continue;
 
                     GetNeighbours(point, members);
-                    if(QuickItemScan.PluginConfig.Verbose.Value)
+                    if(QuickItemScan.PluginConfig.Debug.Verbose.Value)
                         QuickItemScan.Log.LogDebug($"{point} has {members.Count} neighbours");
                     if (members.Count < (minPoints - 1))
                     {
@@ -79,7 +79,7 @@ public class DBSCAN
                         using (ListPool<T>.Get(out var members2))
                         {
                             GetNeighbours(members[j], members2);
-                            if(QuickItemScan.PluginConfig.Verbose.Value)
+                            if(QuickItemScan.PluginConfig.Debug.Verbose.Value)
                                 QuickItemScan.Log.LogDebug($"{point} -> {members[j]} has {members2.Count} neighbours");
                             if (members2.Count >= (minPoints - 1 ))
                             {
@@ -121,12 +121,12 @@ public class DBSCAN
             
                     var distance = distanceFunction(point, curr);
                     
-                    if(QuickItemScan.PluginConfig.Verbose.Value)
+                    if(QuickItemScan.PluginConfig.Debug.Verbose.Value)
                         QuickItemScan.Log.LogDebug($"{point} -> {curr} : {distance}");
    
                     if (distance <= maxDistance)
                     {
-                        if(QuickItemScan.PluginConfig.Verbose.Value)
+                        if(QuickItemScan.PluginConfig.Debug.Verbose.Value)
                             QuickItemScan.Log.LogDebug($"{curr} is neighbour");
                         members.Add(curr);
                     }

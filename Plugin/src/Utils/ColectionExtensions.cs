@@ -1,8 +1,9 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 
 namespace QuickItemScan.Utils;
 
-public static class ListExtensions
+public static class ColectionExtensions
 {
     public static void AddOrdered<T>(this List<T> self, T item, IComparer<T> comparer = default)
     {

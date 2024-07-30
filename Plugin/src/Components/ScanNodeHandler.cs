@@ -65,9 +65,9 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
     private void Start()
     {
         //cache possible components for the ScanNode
-        Components.GrabbableObject          = gameObject.GetComponentInChildren<GrabbableObject>();
-        Components.EnemyAI                  = gameObject.GetComponentInChildren<EnemyAI>();
-        Components.TerminalAccessibleObject = gameObject.GetComponentInChildren<TerminalAccessibleObject>();
+        Components.GrabbableObject          = gameObject.GetComponentInParent<GrabbableObject>();
+        Components.EnemyAI                  = gameObject.GetComponentInParent<EnemyAI>();
+        Components.TerminalAccessibleObject = gameObject.GetComponentInParent<TerminalAccessibleObject>();
         Components.ScanNodeRenderer         = ScanNode.GetComponent<Renderer>();
         
         //add scanSphere
@@ -89,7 +89,7 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
         if (gameNetworkManager.localPlayerController.isPlayerDead)
             return;
         
-        if(QuickItemScan.PluginConfig.Verbose.Value)
+        if(QuickItemScan.PluginConfig.Debug.Verbose.Value)
             QuickItemScan.Log.LogDebug($"{ScanNode.headerText}({GetInstanceID()}) is now in range");
         
         InMaxRange = true;
@@ -108,7 +108,7 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
         if (gameNetworkManager == null || controller==null || controller != gameNetworkManager.localPlayerController)
             return;
         
-        if(QuickItemScan.PluginConfig.Verbose.Value)
+        if(QuickItemScan.PluginConfig.Debug.Verbose.Value)
             QuickItemScan.Log.LogDebug($"{ScanNode.headerText}({GetInstanceID()}) is now out of range");
         
         InMaxRange = false;
@@ -120,7 +120,7 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
 
     private void OnDestroy()
     {
-        if(QuickItemScan.PluginConfig.Verbose.Value)
+        if(QuickItemScan.PluginConfig.Debug.Verbose.Value)
             QuickItemScan.Log.LogDebug($"{ScanNode.headerText}({GetInstanceID()}) is now out of range");
         
         InMaxRange = false;
@@ -216,17 +216,19 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
         var enemyAI = Components.EnemyAI;
         var terminalAccessibleObject = Components.TerminalAccessibleObject;
         
-        if (grabbableObject is not null
-            && (grabbableObject.isHeld || grabbableObject.isHeldByEnemy || grabbableObject.deactivated)) 
+        if (grabbableObject && (grabbableObject.heldByPlayerOnServer || grabbableObject.isHeldByEnemy || grabbableObject.deactivated)) 
             return false;
 
-        if (enemyAI is not null && enemyAI.isEnemyDead) 
+        if (enemyAI && enemyAI.isEnemyDead) 
             return false;
 
-        if (terminalAccessibleObject is not null && terminalAccessibleObject.isBigDoor &&
-            terminalAccessibleObject.isDoorOpen)
-            return false;
-        
+        if (!QuickItemScan.PluginConfig.Optional.ScanOpenDoors.Value)
+        {
+            if (terminalAccessibleObject && terminalAccessibleObject.isBigDoor &&
+                terminalAccessibleObject.isDoorOpen)
+                return false;
+        }
+
         return true;
     }
 
