@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using GameNetcodeStuff;
 using QuickItemScan.Patches;
 using UnityEngine;
@@ -17,7 +18,6 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
         public GrabbableObject GrabbableObject { get; internal set; }
         public EnemyAI EnemyAI { get; internal set; }
         public TerminalAccessibleObject TerminalAccessibleObject { get; internal set; }
-        public Renderer ScanNodeRenderer { get; internal set; }
     }
     
     public class ScanNodeClusterData
@@ -44,6 +44,7 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
         public bool IsShown { get; internal set; }
         public bool IsActive { get; internal set; }
         public Vector3 ScreenPos { get; internal set; }
+        public Vector3 ViewportPos { get; internal set; }
     }
 
     public ScanNodeComponents Components { get; } = new();
@@ -68,17 +69,6 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
         Components.GrabbableObject          = gameObject.GetComponentInParent<GrabbableObject>();
         Components.EnemyAI                  = gameObject.GetComponentInParent<EnemyAI>();
         Components.TerminalAccessibleObject = gameObject.GetComponentInParent<TerminalAccessibleObject>();
-        Components.ScanNodeRenderer         = ScanNode.GetComponent<Renderer>();
-        
-        if (QuickItemScan.PluginConfig.Debug.Verbose.Value && !Components.ScanNodeRenderer)
-            QuickItemScan.Log.LogWarning($"{this} does is missing a Renderer!");
-        
-        /*if (!Components.ScanNodeRenderer)
-        {
-            QuickItemScan.Log.LogDebug($"{this} is missing a Renderer");
-            Components.ScanNodeRenderer = gameObject.AddComponent<Renderer>();
-            Components.ScanNodeRenderer.enabled = false;
-        }*/
 
         //add scanSphere
         _scanRadiusTrigger = gameObject.AddComponent<SphereCollider>();
@@ -177,12 +167,6 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
         //save some computing if no-one is scanning ( or can be scanned )
         if ( ShouldUpdate() )
         {
-            _updateInterval -= Time.deltaTime;
-            if (_updateInterval > 0)
-                return;
-
-            _updateInterval = 0.1f;
-            
             //sanity checks
             if (!GameNetworkManager.Instance)
                 return;
@@ -190,21 +174,21 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
             var localPlayer = GameNetworkManager.Instance.localPlayerController;
             if (!localPlayer)
                 return;
-            
-            //cache some variables
-            var playerLocation = localPlayer.transform.position;
             var scanNodePosition = ScanNode.transform.position;
             var camera = localPlayer.gameplayCamera;
-
             
-            if (Components.ScanNodeRenderer)
-                IsOnScreen = Components.ScanNodeRenderer.isVisible;
-            else
-            {
-                //backup plan
-                var screenPoint = camera.WorldToScreenPoint(ScanNode.transform.position);
-                IsOnScreen = Screen.safeArea.Contains(screenPoint);
-            }
+            //check if we're inside the camera FOV
+            DisplayData.ViewportPos = camera.WorldToViewportPoint(scanNodePosition);
+            IsOnScreen = DisplayData.ViewportPos is { z: > 0, x: >= 0 and <= 1, y: >= 0 and <= 1 };
+            //viewport z is already the distance to the camera in world units
+            //( negative means behind camera )
+            DistanceToPlayer = Math.Abs(DisplayData.ViewportPos.z);
+            
+            _updateInterval -= Time.deltaTime;
+            if (_updateInterval > 0)
+                return;
+
+            _updateInterval = 0.1f;
             
             //check if this node has a reason to be scanned
 
@@ -213,22 +197,31 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
             //update other values only if needed
             if (InMaxRange && IsValid)
             {
-                DistanceToPlayer = Vector3.Distance(scanNodePosition, playerLocation);
-
                 InMinRange = DistanceToPlayer < ScanNode.minRange;
 
-                if (!InMinRange && ScanNode.requiresLineOfSight)
+                if (ScanNode.requiresLineOfSight)
                 {
-                    if (!IsOnScreen)
-                        HasLos = false;
+                    if (!InMinRange)
+                    {
+                        if (!IsOnScreen)
+                            HasLos = false;
+                        else
+                        {
+                            if (QuickItemScan.PluginConfig.Performance.Cheat.ScanThroughWalls.Value)
+                                HasLos = true;
+                            else
+                                HasLos = !Physics.Linecast(camera.transform.position, ScanNode.transform.position, 256,
+                                    QueryTriggerInteraction.Ignore);
+                        }
+                    }
                     else
                     {
-                        if (QuickItemScan.PluginConfig.Performance.Cheat.ScanThroughWalls.Value)
-                            HasLos = true;
-                        else
-                            HasLos = !Physics.Linecast(camera.transform.position, ScanNode.transform.position, 256,
-                            QueryTriggerInteraction.Ignore);
+                        HasLos = false;
                     }
+                }
+                else
+                {
+                    HasLos = true;
                 }
             }
         }

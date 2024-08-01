@@ -395,21 +395,13 @@ internal class ScannerPatches
 
                     //update position on screen ( use patch from LCUltrawide for compatibility )
 
-                    var viewportPoint =
-                        StartOfRound.Instance.localPlayerController.gameplayCamera.WorldToViewportPoint(
-                            scanNode.transform.position);
+                    var viewportPoint = handler.DisplayData.ViewportPos;
                     var screenPoint = new Vector3(screenRect.xMin + screenRect.width * viewportPoint.x,
                         screenRect.yMin + screenRect.height * viewportPoint.y, viewportPoint.z);
                     element.anchoredPosition = screenPoint;
 
-                    /*
-                    var screenPoint =
-                        GameNetworkManager.Instance.localPlayerController.gameplayCamera.WorldToScreenPoint(
-                            scanNode.transform.position);
-                    element.anchoredPosition = new Vector2(screenPoint.x - 439.48f, screenPoint.y - 244.8f);
-                    */
-
                     handler.DisplayData.ScreenPos = screenPoint;
+                    
                     //track scrap
                     if (scanNode.nodeType == 2)
                     {
