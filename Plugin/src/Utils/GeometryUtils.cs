@@ -33,22 +33,21 @@ public static class GeometryUtils
         return ret;
     }
     
-    private static readonly Comparer<Tuple<Vector2, float>> DistanceComparer = Comparer<Tuple<Vector2, float>>.Create((t1,t2) => t1.Item2.CompareTo(t2.Item2));
-    
-    public static Vector2 GetMedianFromPoint(this IEnumerable<Vector2> self, Vector2 point)
+    public static T GetMedianFromPoint<T>(this IEnumerable<T> self, Vector2 point, Func<T,Vector2, float> distanceFunc)
     {
-        var values = ListPool<Tuple<Vector2,float>>.Get();
+        var distanceComparer = Comparer<Tuple<T, float>>.Create((t1,t2) => t1.Item2.CompareTo(t2.Item2));
+        var values = ListPool<Tuple<T,float>>.Get();
 
         foreach (var curr in self)
         {
-            var distance = Vector3.Distance(curr, point);
-            values.AddOrdered(new Tuple<Vector2, float>(curr,distance), DistanceComparer);
+            var distance = distanceFunc.Invoke(curr, point);
+            values.AddOrdered(new Tuple<T, float>(curr,distance), distanceComparer);
         }
 
         var mid = values.Count /  2;
         var ret = values[mid].Item1;
         
-        ListPool<Tuple<Vector2,float>>.Release(values);
+        ListPool<Tuple<T,float>>.Release(values);
 
         return ret;
     }

@@ -1,6 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Diagnostics;
 using GameNetcodeStuff;
 using QuickItemScan.Patches;
 using UnityEngine;
@@ -9,8 +7,7 @@ namespace QuickItemScan.Components;
 
 public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
 {
-    public static readonly HashSet<ScanNodeHandler> ScannableNodes = new();
-    
+    //Unity Components associated with the ScanNode
     public class ScanNodeComponents
     {
         protected internal ScanNodeComponents() {}
@@ -20,49 +17,73 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
         public TerminalAccessibleObject TerminalAccessibleObject { get; internal set; }
     }
     
+    //Holder class with the current cluster status
     public class ScanNodeClusterData
     {
         protected internal ScanNodeClusterData() {}
-
+        //Index to the assigned cluster ScanElement
         public int Index { get; internal set; } = -1;
-
+        //the assigned cluster ScanElement
         public RectTransform Element { get; internal set; }
-        
+        //is this node assigned to a Cluster
         public bool HasCluster { get; internal set; }
-        
+        //the master of a cluster is the node that holds the Element
+        //( if this node is removed from screen it needs to either elect a new master or disable the cluster )
         public bool IsMaster { get; internal set; }
         
     }
     
+    //Holder class with the current state
     public class ScanNodeDisplayData
     {
         protected internal ScanNodeDisplayData() {}
 
+        //Index to the assigned ScanElement
         public int Index { get; internal set; } = -1;
-        public float TimeLeft { get; internal set; } = 1;
+        //the assigned ScanElement
         public RectTransform Element { get; internal set; }
-        public bool IsShown { get; internal set; }
+        //is this node assigned to a ScanElement
         public bool IsActive { get; internal set; }
-        public Vector3 ScreenPos { get; internal set; }
+        //has this ScanElement been activated
+        public bool IsShown { get; internal set; }
+        //how long until this ScanNode should disappear form screen
+        public float TimeLeft { get; internal set; } = 1;
+        
+        //cached value of the current position of the object in viewport space
         public Vector3 ViewportPos { get; internal set; }
+        
+        //cached value of the current position of the object in the cameraRect space
+        public Vector3 RectPos { get; internal set; }
     }
 
+    //holder Properties
     public ScanNodeComponents Components { get; } = new();
     public ScanNodeDisplayData DisplayData { get; } = new();
-    
     public ScanNodeClusterData ClusterData { get; } = new();
     
-    private int _cachedMaxDistance = 0;
     
+    //local variables for internal use
+    private int _cachedMaxDistance = 0;
+    private float _updateInterval = 0f;
     private SphereCollider _scanRadiusTrigger = null;
+    
+    //main properties for the ScanNode
     public ScanNodeProperties ScanNode { get; internal set; } = null;
+    //Node has Line Of Sight to the player
     public bool HasLos { get; internal set; } = false;
+    //Cached distance to the player
     public double DistanceToPlayer { get; private set; } = double.PositiveInfinity;
+    //This node is in range to be scanned
+    //( inside the SphereCollider range )
     public bool InMaxRange { get; private set; } = false;
+    //This node is too close to be scanned
     public bool InMinRange { get; private set; } = true;
+    //this node targets a valid entity/item/door
     public bool IsValid { get; private set; } = false;
+    //this node is currently in the player camera Field of View
     public bool IsOnScreen { get; internal set; } = false;
 
+    
     private void Start()
     {
         //cache possible components for the ScanNode
@@ -79,45 +100,50 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
 
     private void OnTriggerEnter(Collider other)
     {
+        //were seaching for a player
         if (!other.CompareTag("Player"))
             return;
 
         var controller = other.GetComponentInParent<PlayerControllerB>();
         var gameNetworkManager = GameNetworkManager.Instance;
-        
+        //the player must be the local player
         if (gameNetworkManager == null || controller==null || controller != gameNetworkManager.localPlayerController)
             return;
-        
+        //the player must be alive
         if (controller.isPlayerDead)
             return;
         
         if(QuickItemScan.PluginConfig.Debug.Verbose.Value)
             QuickItemScan.Log.LogDebug($"{ScanNode.headerText}({GetInstanceID()}) is now in range");
-        
+        //player entered scan range
         InMaxRange = true;
         DistanceToPlayer = _cachedMaxDistance;
-        ScannableNodes.Add(this);
+        ScannerPatches.ScannableNodes.Add(this);
     }
 
     private void OnTriggerExit(Collider other)
     {        
+        //were seaching for a player
         if (!other.CompareTag("Player"))
             return;
 
         var controller = other.GetComponentInParent<PlayerControllerB>();
         var gameNetworkManager = GameNetworkManager.Instance;
         
+        //the player must be the local player
         if (gameNetworkManager == null || controller==null || controller != gameNetworkManager.localPlayerController)
             return;
+        //player could be dead we do not care
         
         if(QuickItemScan.PluginConfig.Debug.Verbose.Value)
             QuickItemScan.Log.LogDebug($"{ScanNode.headerText}({GetInstanceID()}) is now out of range");
         
+        //player is out of scan range
         InMaxRange = false;
         InMinRange = true;
         HasLos = false;
         DistanceToPlayer = double.PositiveInfinity;
-        ScannableNodes.Remove(this);
+        ScannerPatches.ScannableNodes.Remove(this);
     }
 
     private void OnDestroy()
@@ -125,18 +151,18 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
         if (QuickItemScan.PluginConfig.Debug.Verbose.Value)
             QuickItemScan.Log.LogDebug($"{ScanNode.headerText}({GetInstanceID()}) has been deleted");
         
+        //node has been deleted
+        //Cleanup routine
         InMaxRange = false;
         InMinRange = true;
         IsValid = false;
         HasLos = false;
         IsOnScreen = false;
         DistanceToPlayer = double.PositiveInfinity;
-        ScannableNodes.Remove(this);
+        ScannerPatches.ScannableNodes.Remove(this);
         
         ScannerPatches.RemoveNode(this);
     }
-
-    private float _updateInterval = 0f;
 
     private void FixedUpdate()
     {
@@ -184,6 +210,7 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
             //( negative means behind camera )
             DistanceToPlayer = Math.Abs(DisplayData.ViewportPos.z);
             
+            //throttle updates to save some computing
             _updateInterval -= Time.deltaTime;
             if (_updateInterval > 0)
                 return;
@@ -201,12 +228,15 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
 
                 if (ScanNode.requiresLineOfSight)
                 {
+                    //only update LOS if we have a reason to
                     if (!InMinRange)
                     {
+                        //if the node is not in player FOV then it does not have LOS
                         if (!IsOnScreen)
                             HasLos = false;
                         else
                         {
+                            //do LOS as vanilla ( check for a raycast collisions )
                             if (QuickItemScan.PluginConfig.Performance.Cheat.ScanThroughWalls.Value)
                                 HasLos = true;
                             else
@@ -227,6 +257,7 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
         }
         else
         {
+            //reset values to start clean on next valid update
             IsOnScreen = false;
             IsValid = false;
             InMinRange = true;
@@ -235,11 +266,13 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
 
     private bool ShouldUpdate()
     {
-        return DisplayData.IsActive || ( InMaxRange && ScannerPatches.CanScan());
+        //Node is shown in HUD, or it is in range and player can scan
+        return DisplayData.IsActive || ( InMaxRange && ScannerPatches.CanUpdate());
     }
     
     private bool CheckValid()
     {
+        //node is not disabled
         if (!ScanNode.gameObject.activeInHierarchy)
             return false;
         
@@ -247,14 +280,18 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
         var enemyAI = Components.EnemyAI;
         var terminalAccessibleObject = Components.TerminalAccessibleObject;
         
+        //object is not held
         if (grabbableObject && (grabbableObject.isHeld || grabbableObject.isHeldByEnemy || grabbableObject.deactivated)) 
             return false;
 
+        //enemy is alive
         if (enemyAI && enemyAI.isEnemyDead) 
             return false;
 
+        
         if (!QuickItemScan.PluginConfig.Optional.ScanOpenDoors.Value)
         {
+            //door is not open
             if (terminalAccessibleObject && terminalAccessibleObject.isBigDoor &&
                 terminalAccessibleObject.isDoorOpen)
                 return false;
@@ -265,24 +302,30 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
 
     public int CompareTo(ScanNodeHandler other)
     {
+        //if we're deleted sort last
         if (!ScanNode)
             return 1;
-
+            
+        //if they're deleted sort first
         if (!other)
             return -1;
         
+        //nodes in FOV first
         var tmp = IsOnScreen.CompareTo(other.IsOnScreen);
         if (tmp != 0)
             return -tmp;
         
+        //valid nodes first
         tmp = IsValid.CompareTo(other.IsValid);
         if (tmp != 0)
             return -tmp;
         
+        //sort by node type
         tmp = ScanNode.nodeType.CompareTo(other.ScanNode.nodeType);
         if (tmp != 0)
             return tmp;
 
+        //closer nodes first
         return DistanceToPlayer.CompareTo(other.DistanceToPlayer);
     }
 
