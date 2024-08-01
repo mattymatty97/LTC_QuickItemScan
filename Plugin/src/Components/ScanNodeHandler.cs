@@ -70,6 +70,9 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
         Components.TerminalAccessibleObject = gameObject.GetComponentInParent<TerminalAccessibleObject>();
         Components.ScanNodeRenderer         = ScanNode.GetComponent<Renderer>();
         
+        if (QuickItemScan.PluginConfig.Debug.Verbose.Value && !Components.ScanNodeRenderer)
+            QuickItemScan.Log.LogWarning($"{this} does is missing a Renderer!");
+        
         /*if (!Components.ScanNodeRenderer)
         {
             QuickItemScan.Log.LogDebug($"{this} is missing a Renderer");

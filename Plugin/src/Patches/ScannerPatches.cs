@@ -5,6 +5,7 @@ using GameNetcodeStuff;
 using HarmonyLib;
 using MonoMod.RuntimeDetour;
 using QuickItemScan.Components;
+using QuickItemScan.Dependency;
 using QuickItemScan.Utils;
 using TMPro;
 using UnityEngine;
@@ -45,6 +46,8 @@ internal class ScannerPatches
     {
         if (!_MainHolder)
         {
+            if (AsyncLoggerProxy.Enabled)
+                AsyncLoggerProxy.WriteEvent(QuickItemScan.NAME, "MainHolder", "New");
             _MainHolder = new GameObject(QuickItemScan.NAME);
         }
         
@@ -238,6 +241,10 @@ internal class ScannerPatches
         if (hudManager.playerPingingScan <= 0)
             return;
 
+        
+        if (AsyncLoggerProxy.Enabled)
+            AsyncLoggerProxy.WriteEvent(QuickItemScan.NAME, "TryAddNewNodes", "Start");
+        
         hudManager.scannedScrapNum = 0;
 
         if (ScanNodeHandler.ScannableNodes.Count > 0)
@@ -314,6 +321,9 @@ internal class ScannerPatches
                     }
                 }
             }
+        
+        if (AsyncLoggerProxy.Enabled)
+            AsyncLoggerProxy.WriteEvent(QuickItemScan.NAME, "TryAddNewNodes", "End");
     }
 
     private static bool UpdateNodesOnScreen(HUDManager @this)
@@ -486,6 +496,10 @@ internal class ScannerPatches
 
     private static void ComputeClusterNodes(HUDManager @this, Dictionary<string, List<ScanNodeHandler>> clusterableData)
     {
+        
+        if (AsyncLoggerProxy.Enabled)
+            AsyncLoggerProxy.WriteEvent(QuickItemScan.NAME, "ComputeClusterNodes", "Start");
+        
         ResetClusters();
         
         if (!_screenRect)
@@ -534,6 +548,9 @@ internal class ScannerPatches
                 }
             }
         }
+        
+        if (AsyncLoggerProxy.Enabled)
+            AsyncLoggerProxy.WriteEvent(QuickItemScan.NAME, "ComputeClusterNodes", "End");
         
         return;
 

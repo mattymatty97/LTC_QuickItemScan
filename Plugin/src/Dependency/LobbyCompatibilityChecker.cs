@@ -20,7 +20,7 @@ public static class LobbyCompatibilityChecker
     [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.NoOptimization)]
     public static void Init()
     {
-        PluginHelper.RegisterPlugin(QuickItemScan.GUID, System.Version.Parse(QuickItemScan.VERSION), CompatibilityLevel.Everyone, VersionStrictness.Minor);
+        PluginHelper.RegisterPlugin(QuickItemScan.GUID, System.Version.Parse(QuickItemScan.VERSION), CompatibilityLevel.ClientOnly, VersionStrictness.None);
     }
         
 }
