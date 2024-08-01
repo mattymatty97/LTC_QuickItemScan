@@ -69,6 +69,7 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
         Components.EnemyAI                  = gameObject.GetComponentInParent<EnemyAI>();
         Components.TerminalAccessibleObject = gameObject.GetComponentInParent<TerminalAccessibleObject>();
         Components.ScanNodeRenderer         = ScanNode.GetComponent<Renderer>();
+        
         /*if (!Components.ScanNodeRenderer)
         {
             QuickItemScan.Log.LogDebug($"{this} is missing a Renderer");
@@ -79,6 +80,8 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
         //add scanSphere
         _scanRadiusTrigger = gameObject.AddComponent<SphereCollider>();
         _scanRadiusTrigger.isTrigger = true;
+        _scanRadiusTrigger.radius = ScanNode.maxRange;
+        _cachedMaxDistance = ScanNode.maxRange;
     }
 
     private void OnTriggerEnter(Collider other)
@@ -126,8 +129,8 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
 
     private void OnDestroy()
     {
-        if(QuickItemScan.PluginConfig.Debug.Verbose.Value)
-            QuickItemScan.Log.LogDebug($"{ScanNode.headerText}({GetInstanceID()}) is now out of range");
+        if (QuickItemScan.PluginConfig.Debug.Verbose.Value)
+            QuickItemScan.Log.LogDebug($"{ScanNode.headerText}({GetInstanceID()}) has been deleted");
         
         InMaxRange = false;
         InMinRange = true;
@@ -136,6 +139,8 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
         IsOnScreen = false;
         DistanceToPlayer = double.PositiveInfinity;
         ScannableNodes.Remove(this);
+        
+        ScannerPatches.RemoveNode(this);
     }
 
     private float _updateInterval = 0f;
@@ -143,30 +148,30 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
     private void FixedUpdate()
     {
         //if scan-node got deleted
-        //TODO: maybe delete ourselves too
         if (!ScanNode)
+        {
+            Destroy(gameObject);
             return;
+        }
 
-        //update sphere radius to match maxRange ( update if range is changed at runtime too )
+        //update sphere radius to match maxRange
         if (_cachedMaxDistance != ScanNode.maxRange)
         {
             _cachedMaxDistance = ScanNode.maxRange;
-
-            //SphereCollider will shrink based on the largest scale, make sure to account for that in the radius
-            var scale = transform.lossyScale;
-            var factor = Math.Max(scale.x, Math.Max(scale.y, scale.z));
-
-            _scanRadiusTrigger.radius = _cachedMaxDistance / factor;
+            _scanRadiusTrigger.radius = _cachedMaxDistance;
         }
     }
 
     private void LateUpdate()
     {
         //if scan-node got deleted
-        //TODO: maybe delete ourselves too
         if (!ScanNode)
+        {
+            Destroy(gameObject);
             return;
+        }
         
+        //save some computing if no-one is scanning ( or can be scanned )
         if ( ShouldUpdate() )
         {
             _updateInterval -= Time.deltaTime;
@@ -175,6 +180,7 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
 
             _updateInterval = 0.1f;
             
+            //sanity checks
             if (!GameNetworkManager.Instance)
                 return;
             
@@ -182,19 +188,22 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
             if (!localPlayer)
                 return;
             
+            //cache some variables
             var playerLocation = localPlayer.transform.position;
             var scanNodePosition = ScanNode.transform.position;
             var camera = localPlayer.gameplayCamera;
 
+            
             if (Components.ScanNodeRenderer)
                 IsOnScreen = Components.ScanNodeRenderer.isVisible;
             else
             {
+                //backup plan
                 var screenPoint = camera.WorldToScreenPoint(ScanNode.transform.position);
                 IsOnScreen = Screen.safeArea.Contains(screenPoint);
             }
             
-            //check if this node is supposed to be scannable
+            //check if this node has a reason to be scanned
 
             IsValid = CheckValid();
             
@@ -235,11 +244,14 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
     
     private bool CheckValid()
     {
+        if (!ScanNode.gameObject.activeInHierarchy)
+            return false;
+        
         var grabbableObject = Components.GrabbableObject;
         var enemyAI = Components.EnemyAI;
         var terminalAccessibleObject = Components.TerminalAccessibleObject;
         
-        if (grabbableObject && (grabbableObject.heldByPlayerOnServer || grabbableObject.isHeldByEnemy || grabbableObject.deactivated)) 
+        if (grabbableObject && (grabbableObject.isHeld || grabbableObject.isHeldByEnemy || grabbableObject.deactivated)) 
             return false;
 
         if (enemyAI && enemyAI.isEnemyDead) 
