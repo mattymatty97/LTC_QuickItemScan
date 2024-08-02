@@ -61,6 +61,14 @@ internal class QuickItemScan : BaseUnityPlugin
 			internal static ConfigEntry<int> MaxScanItems;
 			internal static ConfigEntry<float> NewNodeDelay;
 			internal static ConfigEntry<int> NewNodeCount;
+			
+			internal static class Total
+			{
+				internal static ConfigEntry<int> MaxValue;
+				internal static ConfigEntry<float> BaseSpeed;
+				internal static ConfigEntry<float> ScalingFactor;
+				internal static ConfigEntry<bool> UpdateDown;
+			}
 		}
 
 		internal static class Performance
@@ -95,6 +103,7 @@ internal class QuickItemScan : BaseUnityPlugin
 		{
 			var config = INSTANCE.Config;
 			//Initialize Configs
+			//Scanner
 			Scanner.ScanTimer = config.Bind("Scanner", "Expire after", 15.0f,
 				new ConfigDescription("how long the scanned items will stay on screen ( negative means no expiration )",
 					new AcceptableValueRange<float>(-1f, 20f)));
@@ -107,6 +116,15 @@ internal class QuickItemScan : BaseUnityPlugin
 			Scanner.NewNodeCount = config.Bind("Scanner", "New node count", 5,
 				new ConfigDescription("how many new nodes to show each cycle ( -1 means no delay )",
 					new AcceptableValueRange<int>(-1, 10)));
+			//Scanner.Total
+			Scanner.Total.MaxValue = config.Bind("Scanner.Total", "Maximum Value", 10000, new ConfigDescription(
+				"Maximum scrap value that can be visualized\nVanilla: 10000", new AcceptableValueRange<int>(20, 90000)));
+			Scanner.Total.BaseSpeed = config.Bind("Scanner.Total", "Base Speed", 300f, new ConfigDescription(
+				"Value per second before multipliers are applied\nVanilla: 1500", new AcceptableValueRange<float>(20f, 3000f)));
+			Scanner.Total.ScalingFactor = config.Bind("Scanner.Total", "Scaling Factor", 3f, new ConfigDescription(
+				"Scaling factor for the speed\nVanilla: 0", new AcceptableValueRange<float>(0f, 99f)));
+			Scanner.Total.UpdateDown = config.Bind("Scanner.Total", "Update If Lower", true, new ConfigDescription(
+				"Update counter on lower total\nVanilla: false"));
 			//Performance.Cluster
 			Performance.Cluster.NodeCount = config.Bind("Performance.Cluster", "Count", 20,
 				new ConfigDescription("how many clusters to compute ( 0 means disabled )",

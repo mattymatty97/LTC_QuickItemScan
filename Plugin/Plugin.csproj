@@ -29,6 +29,7 @@
         <!-- clean referencing -->
         <Reference Include="$(GameDirectory)\Lethal Company_Data\Managed\Unity.TextMeshPro.dll" Publicize="false"/>
         <Reference Include="$(GameDirectory)\Lethal Company_Data\Managed\UnityEngine.dll" Publicize="false"/>
+        <Reference Include="$(GameDirectory)\Lethal Company_Data\Managed\UnityEngine.AudioModule.dll" Publicize="false"/>
         <Reference Include="$(GameDirectory)\Lethal Company_Data\Managed\UnityEngine.AnimationModule.dll" Publicize="false"/>
         <Reference Include="$(GameDirectory)\Lethal Company_Data\Managed\UnityEngine.PhysicsModule.dll" Publicize="false"/>
         <Reference Include="$(GameDirectory)\Lethal Company_Data\Managed\UnityEngine.CoreModule.dll" Publicize="false"/>

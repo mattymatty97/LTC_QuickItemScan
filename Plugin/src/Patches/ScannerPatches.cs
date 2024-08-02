@@ -19,8 +19,6 @@ namespace QuickItemScan.Patches;
 [HarmonyPatch]
 internal class ScannerPatches
 {
-    private static int TotalDisplayWeight = 50;
-    private static int ScanStartWeight = 100;
     private static readonly int ColorNumberHash = Animator.StringToHash("colorNumber");
     private static readonly int DisplayHash = Animator.StringToHash("display");
     private static readonly Vector2 ViewportCenter = new Vector2(0.5f,0.5f);
@@ -36,7 +34,9 @@ internal class ScannerPatches
     //internal counters
     private static float _newNodeInterval;
     private static float _clusterInterval;
-    private static int _newNodesToAdd;
+    private static float _displayTotalInterval;
+    private static bool  _addingDisplayTotal;
+    private static int   _newNodesToAdd;
     //lobby object cache
     private static RectTransform _screenRect;
     private static GameObject _mainHolder;
@@ -183,6 +183,13 @@ internal class ScannerPatches
         {
             totalScrapObject.transform.SetAsLastSibling();
         }
+        
+        //render scans behind the rest of the UI
+        var scannerObject = GameObject.Find("Systems/UI/Canvas/ObjectScanner");
+        if (scannerObject)
+        {
+            scannerObject.transform.SetSiblingIndex(3);
+        }
 
     }
 
@@ -282,6 +289,8 @@ internal class ScannerPatches
         }
 
         self.scanInfoAnimator.SetBool(DisplayHash, self.scannedScrapNum >= 2 && scannedScrap);
+        
+        UpdateTotalText(self);
     }
 
     [HarmonyPrefix]
@@ -385,7 +394,9 @@ internal class ScannerPatches
                     nodeHandler.DisplayData.Index = index;
                     if (QuickItemScan.PluginConfig.Scanner.ScanTimer.Value >= 0)
                         nodeHandler.DisplayData.TimeLeft = QuickItemScan.PluginConfig.Scanner.ScanTimer.Value;
-
+                    else
+                        nodeHandler.DisplayData.TimeLeft = 1;
+                    
                     //update scrap values
                     if (nodeHandler.ScanNode?.nodeType != 2)
                     {
@@ -783,6 +794,49 @@ internal class ScannerPatches
                 DisableCluster(i);
             }
         }    
+    }
+
+    private static void UpdateTotalText(HUDManager hudManager)
+    {
+        //make sure vanilla never runs 
+        hudManager.addToDisplayTotalInterval = float.MinValue;
+        hudManager.addingToDisplayTotal = false;
+        
+        _displayTotalInterval -= Time.deltaTime;
+        if (_displayTotalInterval > 0)
+            return;
+
+        _displayTotalInterval = 0.03f;
+        
+        var maxScrap = QuickItemScan.PluginConfig.Scanner.Total.MaxValue.Value;
+        var baseSpeed = QuickItemScan.PluginConfig.Scanner.Total.BaseSpeed.Value;
+        var scalingFactor = QuickItemScan.PluginConfig.Scanner.Total.ScalingFactor.Value;
+        
+        var target = Math.Clamp(hudManager.totalScrapScanned, 0, maxScrap);
+        var current = hudManager.totalScrapScannedDisplayNum;
+        var delta = target - current;
+
+        if (delta == 0 || 
+            hudManager.scannedScrapNum < 2 || 
+            (!QuickItemScan.PluginConfig.Scanner.Total.UpdateDown.Value && delta < 0))
+        {
+            if (!_addingDisplayTotal) 
+                return;
+            
+            _addingDisplayTotal = false;
+            hudManager.UIAudio.PlayOneShot(hudManager.finishAddingToTotalSFX);
+            return;
+        }
+        
+        _addingDisplayTotal = true;
+        var fraction = maxScrap / Math.Abs(delta);
+        var multiplier = 1 + fraction * scalingFactor;
+        var speed = baseSpeed * multiplier;
+
+        hudManager.totalScrapScannedDisplayNum = (int) Mathf.MoveTowards(current, target, speed * Time.deltaTime);
+
+        hudManager.totalValueText.text = hudManager.totalScrapScannedDisplayNum.ToString();
+        hudManager.UIAudio.PlayOneShot(hudManager.addToScrapTotalSFX);
     }
     
     private static void DisableCluster(int index)
