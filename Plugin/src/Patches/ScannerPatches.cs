@@ -12,12 +12,15 @@ using UnityEngine;
 using UnityEngine.Animations;
 using UnityEngine.Pool;
 using Object = UnityEngine.Object;
+// ReSharper disable InconsistentNaming
 
 namespace QuickItemScan.Patches;
 
 [HarmonyPatch]
 internal class ScannerPatches
 {
+    private static int TotalDisplayWeight = 50;
+    private static int ScanStartWeight = 100;
     private static readonly int ColorNumberHash = Animator.StringToHash("colorNumber");
     private static readonly int DisplayHash = Animator.StringToHash("display");
     private static readonly Vector2 ViewportCenter = new Vector2(0.5f,0.5f);
@@ -102,22 +105,43 @@ internal class ScannerPatches
         DisplayedScanNodes.Clear();
 
         var original = __instance.scanElements[0];
-        
-        //empty this so other mods do not complain
-        Array.Resize(ref __instance.scanElements, 0);
 
+        var location = original.transform.parent;
+
+        var mainTransform = location.Find(nameof(QuickItemScan));
+        if (!mainTransform)
+        {
+            mainTransform = new GameObject(nameof(QuickItemScan)).transform;
+            mainTransform.SetParent(location, false);
+        }
+
+        var scanElementTransform = mainTransform.Find("ScanElements");
+        if (!scanElementTransform)
+        {
+            scanElementTransform = new GameObject("ScanElements").transform;
+            scanElementTransform.transform.SetParent(mainTransform, false);
+        }
+        
         Array.Resize(ref ScanDisplays, QuickItemScan.PluginConfig.Scanner.MaxScanItems.Value);
 
         for (var i = 0; i < QuickItemScan.PluginConfig.Scanner.MaxScanItems.Value; i++)
         {
             var element = Object.Instantiate(original, original.transform.position, original.transform.rotation,
-                original.transform.parent);
-            element.transform.name = $"new {original.transform.name}-{i}";
+                scanElementTransform);
+            element.transform.name = $"scan-{i}";
             //mark index as available
             FreeScanDisplays.Enqueue(i);
             ScanDisplays[i] = element;
         }
 
+        
+        var clusterElementTransform = mainTransform.Find("ClusterElements");
+        if (!clusterElementTransform)
+        {
+            clusterElementTransform = new GameObject("ClusterElements").transform;
+            clusterElementTransform.transform.SetParent(mainTransform, false);
+        }
+        
         Array.Resize(ref ClusterDisplays, QuickItemScan.PluginConfig.Performance.Cluster.NodeCount.Value);
         Array.Resize(ref ClusterDisplayAssignment, QuickItemScan.PluginConfig.Performance.Cluster.NodeCount.Value);
         Array.Resize(ref ClusterNodes, QuickItemScan.PluginConfig.Performance.Cluster.NodeCount.Value);
@@ -125,11 +149,12 @@ internal class ScannerPatches
         for (var i = 0; i < QuickItemScan.PluginConfig.Performance.Cluster.NodeCount.Value; i++)
         {
             var element = Object.Instantiate(original, original.transform.position, original.transform.rotation,
-                original.transform.parent);
-            element.transform.name = $"cluster {original.transform.name}-{i}";
+                clusterElementTransform);
+            element.transform.name = $"cluster-{i}";
             //mark index as available
             FreeClusterDisplays.Enqueue(i);
             ClusterDisplays[i] = element;
+            
             ClusterDisplayAssignment[i] = null;
             var nodes = ClusterNodes[i];
             //initialize cluster assignment list
@@ -137,6 +162,28 @@ internal class ScannerPatches
 
             nodes.Clear();
         }
+
+        //empty this so other mods do not complain
+        foreach (var ogScanElement in __instance.scanElements)
+        {
+            if (ogScanElement == original)
+                continue;
+            if(ogScanElement)
+                Object.Destroy(ogScanElement.gameObject);
+        }
+        
+        Array.Resize(ref __instance.scanElements, 0);
+        
+        //set ordering
+        scanElementTransform.SetAsLastSibling();
+
+        //try to force TotalScrap to be rendered above the others
+        var totalScrapObject = GameObject.Find("Systems/UI/Canvas/ObjectScanner/GlobalScanInfo");
+        if (totalScrapObject)
+        {
+            totalScrapObject.transform.SetAsLastSibling();
+        }
+
     }
 
     [HarmonyPatch(typeof(HUDManager), nameof(HUDManager.DisableAllScanElements))]
@@ -278,11 +325,11 @@ internal class ScannerPatches
                 //loop over the list
                 foreach (var nodeHandler in ScannableNodes)
                 {
-                    //skip if node does is deleted
+                    //skip if node is deleted
                     if (!nodeHandler)
                         continue;
 
-                    //skip if node does is not in player FOV
+                    //skip if node is not in player FOV
                     if (!nodeHandler.IsOnScreen)
                         continue;
                     
@@ -323,12 +370,12 @@ internal class ScannerPatches
 
                     var element = ScanDisplays[index];
                     
-                    //should never happen but better check it anyways
+                    //should never happen but better check it anyway
                     //skip if the chosen element is destroyed
                     if (!element)
                         continue;
 
-                    //add curent node tho the list of nodes on screen
+                    //add current node tho the list of nodes on screen
                     DisplayedScanNodes.Add(nodeHandler);
                     
                     //mark all state variables
@@ -384,91 +431,92 @@ internal class ScannerPatches
         {
             using (ListPool<ScanNodeHandler>.Get(out var toRemove))
             {
-                foreach (var handler in DisplayedScanNodes)
-                {
-                    var element = handler.DisplayData.Element;
-                    //update expiration time
-                    if (QuickItemScan.PluginConfig.Scanner.ScanTimer.Value >= 0 && handler.DisplayData.IsShown)
-                        handler.DisplayData.TimeLeft -= Time.deltaTime;
-                    //check if node expired or is not visible anymore
-                    if (!handler || !handler.ScanNode || !handler.IsOnScreen || !handler.IsValid || handler.DisplayData.TimeLeft <= 0)
+                    foreach (var handler in DisplayedScanNodes)
                     {
-                        toRemove.Add(handler);
-                        continue;
-                    }
-
-                    var scanNode = handler.ScanNode;
-
-                    //initialize the field ( run it only once to save resources )
-                    //throttle init of new nodes
-                    if (!handler.DisplayData.IsShown && _newNodesToAdd != 0)
-                    {
-                        //mark the state
-                        handler.DisplayData.IsShown = true;
-                        //update the counter
-                        if (_newNodesToAdd > 0)
-                            _newNodesToAdd--;
-                        
-                        //activate the ScanElement
-                        if (!element.gameObject.activeSelf)
+                        var element = handler.DisplayData.Element;
+                        //update expiration time
+                        if (QuickItemScan.PluginConfig.Scanner.ScanTimer.Value >= 0 && handler.DisplayData.IsShown)
+                            handler.DisplayData.TimeLeft -= Time.deltaTime;
+                        //check if node expired or is not visible anymore
+                        if (!handler || !handler.ScanNode || !handler.IsOnScreen || !handler.IsValid ||
+                            handler.DisplayData.TimeLeft <= 0)
                         {
-                            element.gameObject.SetActive(true);
-                            element.GetComponent<Animator>().SetInteger(ColorNumberHash, scanNode.nodeType);
-                            if (scanNode.creatureScanID != -1)
-                                hudManager.AttemptScanNewCreature(scanNode.creatureScanID);
+                            toRemove.Add(handler);
+                            continue;
                         }
 
-                        //update the ScanElement text
-                        var scanElementText = element.gameObject.GetComponentsInChildren<TextMeshProUGUI>();
-                        if (scanElementText.Length > 1)
+                        var scanNode = handler.ScanNode;
+
+                        //initialize the field ( run it only once to save resources )
+                        //throttle init of new nodes
+                        if (!handler.DisplayData.IsShown && _newNodesToAdd != 0)
                         {
-                            scanElementText[0].text = scanNode.headerText;
-                            scanElementText[1].text = scanNode.subText;
+                            //mark the state
+                            handler.DisplayData.IsShown = true;
+                            //update the counter
+                            if (_newNodesToAdd > 0)
+                                _newNodesToAdd--;
+
+                            //activate the ScanElement
+                            if (!element.gameObject.activeSelf)
+                            {
+                                element.gameObject.SetActive(true);
+                                element.GetComponent<Animator>().SetInteger(ColorNumberHash, scanNode.nodeType);
+                                if (scanNode.creatureScanID != -1)
+                                    hudManager.AttemptScanNewCreature(scanNode.creatureScanID);
+                            }
+
+                            //update the ScanElement text
+                            var scanElementText = element.gameObject.GetComponentsInChildren<TextMeshProUGUI>();
+                            if (scanElementText.Length > 1)
+                            {
+                                scanElementText[0].text = scanNode.headerText;
+                                scanElementText[1].text = scanNode.subText;
+                            }
                         }
+
+                        //update position on screen ( use patch from LCUltrawide for compatibility )
+                        //use cached viewport pos
+                        var viewportPoint = handler.DisplayData.ViewportPos;
+                        var rectPoint = new Vector3(screenRect.xMin + screenRect.width * viewportPoint.x,
+                            screenRect.yMin + screenRect.height * viewportPoint.y, viewportPoint.z);
+                        //update the ScanElement position
+                        element.anchoredPosition = rectPoint;
+                        //cache the actual position
+                        handler.DisplayData.RectPos = rectPoint;
+
+                        //track scrap
+                        if (scanNode.nodeType == 2)
+                        {
+                            hudManager.totalScrapScanned += scanNode.scrapValue;
+                            hasScannedScrap = true;
+                        }
+
+                        //if we should recalculate the clusters
+                        if (!shouldComputeClusters)
+                            continue;
+
+                        //if this node has been activated
+                        if (!handler.DisplayData.IsShown)
+                            continue;
+
+                        //categorize the node by text
+                        //TODO: do not assume they node types will not have overlapping names
+                        if (!clusterableNodes.TryGetValue(scanNode.headerText, out var list))
+                        {
+                            list = ListPool<ScanNodeHandler>.Get();
+                            clusterableNodes[scanNode.headerText] = list;
+                        }
+
+                        //sort them only by distance
+                        list.AddOrdered(handler, ZComparer);
                     }
 
-                    //update position on screen ( use patch from LCUltrawide for compatibility )
-                    //use cached viewport pos
-                    var viewportPoint = handler.DisplayData.ViewportPos;
-                    var rectPoint = new Vector3(screenRect.xMin + screenRect.width * viewportPoint.x,
-                        screenRect.yMin + screenRect.height * viewportPoint.y, viewportPoint.z);
-                    //update the ScanElement position
-                    element.anchoredPosition = rectPoint;
-                    //cache the actual position
-                    handler.DisplayData.RectPos = rectPoint;
-                    
-                    //track scrap
-                    if (scanNode.nodeType == 2)
+                    //remove all expired nodes
+                    foreach (var handler in toRemove)
                     {
-                        hudManager.totalScrapScanned += scanNode.scrapValue;
-                        hasScannedScrap = true;
+                        RemoveNode(handler);
                     }
-                
-                    //if we should recalculate the clusters
-                    if (!shouldComputeClusters)
-                        continue;
-                    
-                    //if this node has been activated
-                    if (!handler.DisplayData.IsShown)
-                        continue;
-
-                    //categorize the node by text
-                    //TODO: do not assume they node types will not have overlapping names
-                    if (!clusterableNodes.TryGetValue(scanNode.headerText, out var list))
-                    {
-                        list = ListPool<ScanNodeHandler>.Get();
-                        clusterableNodes[scanNode.headerText] = list;
-                    }
-                    
-                    //sort them only by distance
-                    list.AddOrdered(handler, ZComparer);
-                }
-
-                //remove all expired nodes
-                foreach (var handler in toRemove)
-                {
-                    RemoveNode(handler);
-                }
             }
 
             if (shouldComputeClusters)
@@ -535,7 +583,7 @@ internal class ScannerPatches
         }
     }
 
-    private static void ComputeClusterNodes(HUDManager @this, Dictionary<string, List<ScanNodeHandler>> clusterableData)
+    private static void ComputeClusterNodes(HUDManager hudManager, Dictionary<string, List<ScanNodeHandler>> clusterableData)
     {
         
         if (AsyncLoggerProxy.Enabled)
@@ -547,7 +595,7 @@ internal class ScannerPatches
         //read cached value or create it
         if (!_screenRect)
         {
-            var playerScreen = @this.playerScreenShakeAnimator.gameObject;
+            var playerScreen = hudManager.playerScreenShakeAnimator.gameObject;
             _screenRect = playerScreen.GetComponent<RectTransform>();
         }
         var screenRect = _screenRect.rect;
@@ -650,7 +698,7 @@ internal class ScannerPatches
         }
     }
 
-    private static void UpdateClustersOnScreen(HUDManager @this)
+    private static void UpdateClustersOnScreen(HUDManager hudManager)
     {
         for (var i = 0; i < ClusterNodes.Length; i++)
         {
@@ -682,7 +730,7 @@ internal class ScannerPatches
 
                 var scanNode = target.ScanNode;
                 
-                //if the clusterElement was disaled enable it
+                //if the clusterElement was disabled enable it
                 if (!element.gameObject.activeSelf)
                 {
                     element.gameObject.SetActive(true);
@@ -701,22 +749,21 @@ internal class ScannerPatches
                         scanElementText[1].text = isScrap ? $"Value: {scrapValue}" : scanNode.subText;
                     }
                 }
-                
+
                 //if we need to compute the median point
                 if (!QuickItemScan.PluginConfig.Performance.Cluster.UseClosest.Value)
                 {
-                    using (ListPool<Vector2>.Get(out var points))
-                    {
-                        var medianPoint = cluster.GetMedianFromPoint(ViewportCenter, ViewportDistance);
+                    var medianPoint = cluster.GetMedianFromPoint(ViewportCenter, ViewportDistance);
 
-                        element.anchoredPosition = medianPoint.DisplayData.RectPos;
-                    }
+                    element.anchoredPosition = medianPoint.DisplayData.RectPos;
+
                 }
                 else
                 {
                     //or use the closes node position
                     element.anchoredPosition = target.DisplayData.RectPos;
                 }
+
 
                 //mark all other nodes as not master
                 foreach (var node in cluster)
