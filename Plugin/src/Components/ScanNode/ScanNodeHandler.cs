@@ -1,5 +1,6 @@
 ﻿using System;
 using GameNetcodeStuff;
+using QuickItemScan.Components.ScanElement;
 using QuickItemScan.Patches;
 using UnityEngine;
 
@@ -24,7 +25,7 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
         //Index to the assigned cluster ScanElement
         public int Index { get; internal set; } = -1;
         //the assigned cluster ScanElement
-        public RectTransform Element { get; internal set; }
+        public ScanElementHolder Element { get; internal set; }
         //is this node assigned to a Cluster
         public bool HasCluster { get; internal set; }
         //the master of a cluster is the node that holds the Element
@@ -41,7 +42,7 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
         //Index to the assigned ScanElement
         public int Index { get; internal set; } = -1;
         //the assigned ScanElement
-        public RectTransform Element { get; internal set; }
+        public ScanElementHolder Element { get; internal set; }
         //is this node assigned to a ScanElement
         public bool IsActive { get; internal set; }
         //has this ScanElement been activated
