@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <PropertyGroup>
+        <RootNamespace>$(ModNameSpace)</RootNamespace>
+        <AssemblyName>$(ModName)</AssemblyName>
+        <AssemblyTitle>$(ModName) - Plugin</AssemblyTitle>
+        <Product>$(ModName)</Product>
+    </PropertyGroup>
+	
+    <ItemGroup>
+        <PackageReference Include="TeamBMX.LobbyCompatibility" Version="1.0.1" Private="False"/>
+        <PackageReference Include="AinaVT-LethalConfig" Version="1.4.3" Private="False"/>
+
+        <PackageReference Include="BepInEx.Core" Version="5.4.21" Private="False"/>
+        <PackageReference Include="BepInEx.AssemblyPublicizer.MSBuild" Version="0.4.1" PrivateAssets="all" />
+        
+        <PackageReference Include="LethalCompany.GameLibs.Steam" Version="64.0.0-ngd.0" Private="False" Publicize="True" />
+        <PackageReference  Include="malco-Lategame_Upgrades"  Version="3.11.4" Private="False" Publicize="True" />
+        <PackageReference Include="Sigurd-CSync" Version="5.0.1" Private="False" Publicize="True" />
+    </ItemGroup>
+
+	<!--    <Target Name="NetcodePatch" AfterTargets="PostBuildEvent">
+        <Exec Command="netcode-patch -nv 1.5.2 &quot;$(TargetPath)&quot; @(ReferencePathWithRefAssemblies->'&quot;%(Identity)&quot;', ' ')"/>
+    </Target>-->
+</Project>

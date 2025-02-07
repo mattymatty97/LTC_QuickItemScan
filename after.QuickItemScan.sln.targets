@@ -1,0 +1,13 @@
+﻿<Project>
+    <Target Name="Upload" AfterTargets="Build" Condition="'$(Upload)'=='TRUE' Or '$(Upload)'=='Dry'">
+
+        <Message Importance="High" Text="Publishing" />
+
+        <Exec
+                Condition="'$(UPLOAD)'=='TRUE'"
+                Command='dotnet tcli publish --package-name "$(Product)" --package-namespace "$(Authors)" --package-version "$(PACKAGE_VERSION)"'
+                ConsoleToMSBuild="true"
+                WorkingDirectory="$(SolutionDir)\artifacts\tspublish"
+        />
+    </Target>
+</Project>

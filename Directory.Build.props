@@ -1,0 +1,95 @@
+<Project>
+    
+    <PropertyGroup>
+        <!-- Common Versioning and Module Information -->
+        <Version>0.0.1</Version>
+        <ModName>QuickItemScan</ModName>
+        <ModGUID>mattymatty.QuickItemScan</ModGUID>
+        <ModNameSpace>$(ModName)</ModNameSpace>
+        <AssemblyVersion>$(Version)</AssemblyVersion>
+        <FileVersion>$(Version)</FileVersion>
+        <InformationalVersion>$(Version)</InformationalVersion>
+        <Authors>LethalCompanyModding</Authors>
+
+        <AssemblyDescription>Generate Icons for scrap at runtime, replacing the gear icon.</AssemblyDescription>
+
+        <!-- Assembly Metadata -->
+        <AssemblyConfiguration>Release</AssemblyConfiguration>
+        <TargetFramework>netstandard2.1</TargetFramework>
+        <LangVersion>Latest</LangVersion>
+        <Platforms>AnyCPU</Platforms>
+
+        <!-- License Information -->
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    </PropertyGroup>
+
+    <!-- Embedded Debug -->
+    <PropertyGroup>
+        <DebugSymbols>true</DebugSymbols>
+        <DebugType>embedded</DebugType>
+        <PathMap>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)'))=./</PathMap>
+    </PropertyGroup>
+
+    <!-- Suppress some Warnings -->
+    <PropertyGroup>
+        <NoWarn>1701;1702;CS0436</NoWarn>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="BepInEx.PluginInfoProps" Version="*" />
+    </ItemGroup>
+    <PropertyGroup>
+        <BepInExPluginGuid>$(ModGUID)</BepInExPluginGuid>
+        <BepInExPluginName>$(ModName)</BepInExPluginName>
+    </PropertyGroup>
+
+    <!-- Thunderstore Publish Profile Follows:-->
+    <PropertyGroup>
+        <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+        <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+        <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+        <LangVersion>latest</LangVersion>
+        <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    </PropertyGroup>
+
+    <Target Name="Upload" AfterTargets="AfterBuild" Condition="'$(Upload)'=='TRUE' Or '$(Upload)'=='Dry'">
+        <PropertyGroup>
+            <DistributionDir>$(SolutionDir)\artifacts\tspublish\dist</DistributionDir>
+        </PropertyGroup>
+        <PropertyGroup>
+            <PluginOutDir>$(SolutionDir)\Plugin\$(OutDir)</PluginOutDir>
+            <PluginsDistributionDir>$(DistributionDir)\BepInEx\plugins</PluginsDistributionDir>
+        </PropertyGroup>
+        <PropertyGroup>
+            <PreloaderOutDir>$(SolutionDir)\Preloader\$(OutDir)</PreloaderOutDir>
+            <PreloaderDistributionDir>$(DistributionDir)\BepInEx\patchers</PreloaderDistributionDir>
+        </PropertyGroup>
+
+        <Message Importance="High" Text="Preparing for Publishing" />
+        <RemoveDir Directories="$(DistributionDir)" />
+
+        <ItemGroup>
+            <PluginOutputFiles Include="$(PluginOutDir)\**" Exclude="$(PluginOutDir)\**\*.deps.json" />
+            <PreloaderOutputFiles Include="$(PreloaderOutDir)\**" Exclude="$(PreloaderOutDir)\**\*.deps.json" />
+        </ItemGroup>
+        <Copy
+            SourceFiles="@(PluginOutputFiles)"
+            DestinationFolder="$(PluginsDistributionDir)"
+        />
+        <Copy
+            SourceFiles="@(PreloaderOutputFiles)"
+            DestinationFolder="$(PreloaderDistributionDir)"
+        />
+
+        <ItemGroup>
+            <PackageFiles Include="$(SolutionDir)\README.md" />
+            <PackageFiles Include="$(SolutionDir)\CHANGELOG.md" />
+            <!--<PackageFiles Include="$(SolutionDir)\LICENSE" />-->
+        </ItemGroup>
+        <Copy
+            DestinationFolder="$(DistributionDir)"
+            SourceFiles="@(PackageFiles)"
+        />
+    </Target>
+
+</Project>
