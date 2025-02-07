@@ -19,9 +19,6 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
         new( 1, -1, -1)
     ];
 
-    //collider at eyePos of localPlayer
-    internal static Collider ScannerCollider;
-
     //Unity Components associated with the ScanNode
     public class ScanNodeComponents
     {
@@ -76,12 +73,9 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
     public ScanNodeComponents Components { get; } = new();
     public ScanNodeDisplayData DisplayData { get; } = new();
     public ScanNodeClusterData ClusterData { get; } = new();
-    
-    
+
     //local variables for internal use
-    private int _cachedMaxDistance = 0;
     private float _updateInterval = 0f;
-    private SphereCollider _scanRadiusTrigger = null!;
     
     //main properties for the ScanNode
     public ScanNodeProperties ScanNode { get; internal set; } = null!;
@@ -107,48 +101,6 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
         Components.GrabbableObject          = ScanNode.GetComponentInParent<GrabbableObject>();
         Components.EnemyAI                  = ScanNode.GetComponentInParent<EnemyAI>();
         Components.TerminalAccessibleObject = ScanNode.GetComponentInParent<TerminalAccessibleObject>();
-
-        var ogMaxRange = ScanNode.maxRange;
-        float maxRange = ogMaxRange;
-
-        if (LGUProxy.Enabled)
-        {
-            maxRange += LGUProxy.GetScanRangeIncrease(ScanNode);
-        }
-
-        //add scanSphere
-        _scanRadiusTrigger = gameObject.AddComponent<SphereCollider>();
-        _scanRadiusTrigger.isTrigger = true;
-        _scanRadiusTrigger.radius = maxRange;
-        _scanRadiusTrigger.includeLayers = LayerMask.GetMask("Player");
-        _scanRadiusTrigger.excludeLayers = ~LayerMask.GetMask("Player");
-        _cachedMaxDistance = ogMaxRange;
-    }
-    private void OnTriggerEnter(Collider other)
-    {
-        if (other != ScannerCollider)
-            return;
-
-        var gameNetworkManager = GameNetworkManager.Instance;
-        //the player must be the local player
-        if (gameNetworkManager == null || gameNetworkManager.localPlayerController == null)
-            return;
-
-        //the player must be alive
-        if (gameNetworkManager.localPlayerController.isPlayerDead)
-            return;
-
-        PlayerIsInRange();
-    }
-
-    private void OnTriggerExit(Collider other)
-    {
-        if (other != ScannerCollider)
-            return;
-
-        //player could be dead we do not care
-
-        PlayerIsOutOfRange();
     }
 
     private void PlayerIsInRange()
@@ -157,8 +109,6 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
             QuickItemScan.Log.LogDebug($"{ScanNode.headerText}({GetInstanceID()}) is now in range");
 
         //player entered scan range
-        InMaxRange = true;
-        DistanceToPlayer = _cachedMaxDistance;
         ScannerPatches.ScannableNodes.Add(this);
     }
     private void PlayerIsOutOfRange()
@@ -167,10 +117,10 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
             QuickItemScan.Log.LogDebug($"{ScanNode.headerText}({GetInstanceID()}) is now out of range");
 
         //player is out of scan range
-        InMaxRange = false;
         InMinRange = true;
+        IsValid = false;
         HasLos = false;
-        DistanceToPlayer = float.PositiveInfinity;
+        IsOnScreen = false;
         ScannerPatches.ScannableNodes.Remove(this);
     }
 
@@ -186,7 +136,6 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
         IsValid = false;
         HasLos = false;
         IsOnScreen = false;
-        DistanceToPlayer = float.PositiveInfinity;
         ScannerPatches.ScannableNodes.Remove(this);
         
         ScannerPatches.RemoveNode(this);
@@ -201,20 +150,35 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
             return;
         }
 
+        //sanity checks
+        if (!GameNetworkManager.Instance)
+            return;
+
+        var localPlayer = GameNetworkManager.Instance.localPlayerController;
+        if (!localPlayer)
+            return;
+
+        var playerEye = localPlayer.playerEye;
+
         var ogMaxRange = ScanNode.maxRange;
         float maxRange = ogMaxRange;
-
-        //update sphere radius to match maxRange
-        if (_cachedMaxDistance == ogMaxRange)
+        if (LGUProxy.Enabled)
         {
-            if (LGUProxy.Enabled)
-            {
-                maxRange += LGUProxy.GetScanRangeIncrease(ScanNode);
-            }
-
-            _cachedMaxDistance = ogMaxRange;
-            _scanRadiusTrigger.radius = maxRange;
+            maxRange += LGUProxy.GetScanRangeIncrease(ScanNode);
         }
+
+        var sqrMaxRange = maxRange * maxRange;
+
+        var old = InMaxRange;
+        InMaxRange = DistanceToPlayer <= sqrMaxRange;
+
+        if (old == InMaxRange)
+            return;
+
+        if (InMaxRange)
+            PlayerIsInRange();
+        else
+            PlayerIsOutOfRange();
     }
 
     private void LateUpdate()
@@ -225,16 +189,7 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
             Destroy(gameObject);
             return;
         }
-        
-        //save some computing if no-one is scanning ( or can be scanned )
-        if (!ShouldUpdate())
-        {
-            //reset values to start clean on next valid update
-            IsOnScreen = false;
-            IsValid = false;
-            InMinRange = true;
-            return;
-        }
+
         //sanity checks
         if (!GameNetworkManager.Instance)
             return;
@@ -243,15 +198,27 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
         if (!localPlayer)
             return;
 
-        var scanNodePosition = ScanNode.transform.position;
+        var playerEye = localPlayer.playerEye;
         var camera = localPlayer.gameplayCamera;
+
+        var scanNodePosition = transform.position;
+
+        //Compute distance to player
+        DistanceToPlayer = (playerEye.position - scanNodePosition).sqrMagnitude;
+        
+        //save some computing if we can't be scanned or no-one is scanning
+        if (!ShouldUpdate())
+        {
+            //reset values to start clean on next valid update
+            IsOnScreen = false;
+            IsValid = false;
+            InMinRange = true;
+            return;
+        }
 
         //check if we're inside the camera FOV
         DisplayData.ViewportPos = camera.WorldToViewportPoint(scanNodePosition);
         IsOnScreen = DisplayData.ViewportPos is { z: > 0, x: >= 0 and <= 1, y: >= 0 and <= 1 };
-        //viewport z is already the distance to the camera plane in world units
-        //( negative means behind camera )
-        DistanceToPlayer = Vector3.Distance(camera.transform.position, scanNodePosition);
 
         //throttle updates to save some computing
         _updateInterval -= Time.deltaTime;

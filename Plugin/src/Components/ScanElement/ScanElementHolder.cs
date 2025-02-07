@@ -13,7 +13,6 @@ public class ScanElementHolder : MonoBehaviour
     
     public NodeIdentifier? AssignedIdentifier { get; internal set; }
     public int? AssignedValue { get; internal set; }
-    public int AssignedCount { get; internal set; }
     
     private void Awake()
     {

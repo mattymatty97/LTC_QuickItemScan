@@ -94,7 +94,6 @@ internal class QuickItemScan : BaseUnityPlugin
 				internal static ConfigEntry<int> MinItems;
 				internal static ConfigEntry<float> MaxDistance;
 				internal static ConfigEntry<bool> IgnoreDistance;
-				internal static ConfigEntry<bool> UseClosest;
 			}
 			
 			internal static class LineOfSight
@@ -119,6 +118,7 @@ internal class QuickItemScan : BaseUnityPlugin
 		internal static void Init()
 		{
 			var config = INSTANCE.Config;
+			config.SaveOnConfigSet = false;
 			//Initialize Configs
 			//Scanner
 			Scanner.ScanTimer = config.Bind("Scanner", "Expire after", 15.0f,
@@ -149,13 +149,11 @@ internal class QuickItemScan : BaseUnityPlugin
 			Performance.Cluster.MinItems = config.Bind("Performance.Cluster", "Min items", 3,
 				new ConfigDescription("min number of items to form a cluster",
 					new AcceptableValueRange<int>(3, 10)));
-			Performance.Cluster.MaxDistance = config.Bind("Performance.Cluster", "Max distance %", 5.5f,
+			Performance.Cluster.MaxDistance = config.Bind("Performance.Cluster", "Max distance %", 8.5f,
 				new ConfigDescription("% distance of screen between points in a cluster",
 					new AcceptableValueRange<float>(0f, 15f)));
 			Performance.Cluster.IgnoreDistance = config.Bind("Performance.Cluster", "Bypass distance", false,
 				new ConfigDescription("always cluster all items on screen ( ignore distance )"));
-			Performance.Cluster.UseClosest = config.Bind("Performance.Cluster", "Use Closest", false,
-				new ConfigDescription("cluster node will show on the closest node instead of computing the median"));
 			//Performance.LineOfSight
 			Performance.LineOfSight.ScanThroughWalls = config.Bind("Performance.LineOfSight", "Scan through walls", false,
 				new ConfigDescription("skip expensive Line Of Sight check! ( can be considered a cheat )"));
@@ -182,7 +180,6 @@ internal class QuickItemScan : BaseUnityPlugin
 				LethalConfigProxy.AddConfig(Performance.Cluster.MinItems);
 				LethalConfigProxy.AddConfig(Performance.Cluster.MaxDistance);
 				LethalConfigProxy.AddConfig(Performance.Cluster.IgnoreDistance);
-				LethalConfigProxy.AddConfig(Performance.Cluster.UseClosest);
 				//
 				LethalConfigProxy.AddConfig(Performance.LineOfSight.ScanThroughWalls);
 				LethalConfigProxy.AddConfig(Performance.LineOfSight.CheckCorners);
@@ -192,9 +189,9 @@ internal class QuickItemScan : BaseUnityPlugin
 				LethalConfigProxy.AddConfig(Debug.VerboseColliders);
 				LethalConfigProxy.AddConfig(Debug.VerboseClusters);
 			}
-			
-			
+
             CleanAndSave();
+            config.SaveOnConfigSet = true;
 		}
 
 		internal static void CleanAndSave()

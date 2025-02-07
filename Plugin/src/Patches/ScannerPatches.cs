@@ -23,17 +23,14 @@ internal class ScannerPatches
 {
     private static readonly int ColorNumberHash = Animator.StringToHash("colorNumber");
     private static readonly int DisplayHash = Animator.StringToHash("display");
-    private static readonly Vector2 ViewportCenter = new(0.5f,0.5f);
     //compare by viewport z value ( distance to camera )
     private static readonly IComparer<ScanNodeHandler> DistanceComparer = Comparer<ScanNodeHandler>.Create((n1, n2) =>
         n1.DistanceToPlayer.CompareTo(n2.DistanceToPlayer));
     private static readonly IComparer<ScanNodeHandler> InverseDistanceComparer = Comparer<ScanNodeHandler>.Create((n1, n2) =>
         n2.DistanceToPlayer.CompareTo(n1.DistanceToPlayer));
     //calculate cord distance
-    private static readonly Func<ScanNodeHandler, ScanNodeHandler, float> DisplayDistance = (n1, n2) =>
-        Vector2.Distance(n1.DisplayData.RectPos, n2.DisplayData.RectPos);
-    private static readonly Func<ScanNodeHandler, Vector2, float> ViewportDistance = (n1, v2) =>
-        Vector2.Distance(n1.DisplayData.ViewportPos, v2);
+    private static readonly Func<ScanNodeHandler, ScanNodeHandler, float> DisplayDistance =
+        (n1, n2) => (n1.DisplayData.RectPos - n2.DisplayData.RectPos).sqrMagnitude;
     
     //internal counters
     private static float _newNodeInterval;
@@ -43,7 +40,6 @@ internal class ScannerPatches
     private static int   _newNodesToAdd;
     //lobby object cache
     private static RectTransform _screenRect;
-    private static GameObject _mainHolder;
     
     //scanElements
     private static ScanElementHolder[] ScanDisplays = [];
@@ -62,63 +58,13 @@ internal class ScannerPatches
     //scan nodes currently on HUD
     private static readonly HashSet<ScanNodeHandler> DisplayedScanNodes = new();
 
-    [HarmonyPostfix]
-    [HarmonyPatch(typeof(PlayerControllerB), nameof(PlayerControllerB.ConnectClientToPlayerObject))]
-    private static void OnAssignLocalPlayer(PlayerControllerB __instance)
-    {
-        var eyeTransform = __instance.playerEye;
-
-        var scannerGo = new GameObject(nameof(QuickItemScan) + ".Scanner")
-        {
-            layer = LayerMask.NameToLayer("Player")
-        };
-        scannerGo.transform.SetParent(eyeTransform, false);
-
-        var collider = scannerGo.AddComponent<BoxCollider>();
-        ScanNodeHandler.ScannerCollider = collider;
-        collider.size = new Vector3(0.01f, 0.01f, 0.01f);
-        collider.includeLayers = LayerMask.GetMask("ScanNode");
-        collider.excludeLayers = ~LayerMask.GetMask("ScanNode");
-    }
-    
-
     [HarmonyPatch(typeof(ScanNodeProperties), "Awake")]
     [HarmonyPostfix]
     private static void OnAwake(ScanNodeProperties __instance)
     {
-        //create our root object if missing
-        if (!_mainHolder)
-        {
-            _mainHolder = new GameObject(QuickItemScan.NAME);
-
-            var systems = GameObject.Find("Systems");
-            
-            _mainHolder.transform.SetParent(systems.transform, false);
-            _mainHolder.transform.SetAsFirstSibling();
-        }
-        
-        //create our tracker object in a separate hierarchy
-        //( so we can use SphereColliders without having to care about world scale )
-        var gameObject = new GameObject($"{__instance.headerText} - Tracker")
-        {
-            layer = LayerMask.NameToLayer("ScanNode")
-        };
-        gameObject.transform.SetParent(_mainHolder.transform, false);
-        
         //add out HandlerComponent
-        var handler = gameObject.AddComponent<ScanNodeHandler>();
+        var handler = __instance.gameObject.AddComponent<ScanNodeHandler>();
         handler.ScanNode = __instance;
-        
-        //add the constraint, so it will follow as close as possible the actual SanNode
-        var constraint = gameObject.AddComponent<PositionConstraint>();
-        constraint.AddSource(new ConstraintSource
-        {
-            sourceTransform = __instance.transform,
-            //weight needs to be non-zero
-            weight = 1
-        });
-        constraint.locked = true;
-        constraint.constraintActive = true;
     }
 
     [HarmonyPatch(typeof(HUDManager), nameof(HUDManager.Start))]
@@ -357,85 +303,86 @@ internal class ScannerPatches
 
         hudManager.scannedScrapNum = 0;
 
-        //if there are no nodes skip the loop entirely
-        //TODO: check if it is worth or the list pool cost is negligible
-        if (ScannableNodes.Count > 0)
-            using (ListPool<ScanNodeHandler>.Get(out var orderedNodes))
+        //if there are no viable nodes skip the loop entirely
+        if (ScannableNodes.Count <= 0)
+            return;
+
+        using (ListPool<ScanNodeHandler>.Get(out var orderedNodes))
+        {
+            //loop over the list
+            foreach (var nodeHandler in ScannableNodes)
             {
-                //loop over the list
-                foreach (var nodeHandler in ScannableNodes)
+                //skip if node is deleted
+                if (!nodeHandler)
+                    continue;
+
+                //skip if node is not in player FOV
+                if (!nodeHandler.IsOnScreen)
+                    continue;
+
+                //check visibility
+                var visible = nodeHandler.IsValid && !nodeHandler.InMinRange && nodeHandler.HasLos;
+
+                if (DisplayedScanNodes.Contains(nodeHandler))
                 {
-                    //skip if node is deleted
-                    if (!nodeHandler)
-                        continue;
-
-                    //skip if node is not in player FOV
-                    if (!nodeHandler.IsOnScreen)
-                        continue;
-                    
-                    //check visibility
-                    var visible = nodeHandler.IsValid && !nodeHandler.InMinRange && nodeHandler.HasLos;
-                    
-                    if (DisplayedScanNodes.Contains(nodeHandler))
+                    //if already shown update the expiration time
+                    if (visible)
                     {
-                        //if already shown update the expiration time
-                        if (visible)
-                        {
-                            if (QuickItemScan.PluginConfig.Scanner.ScanTimer.Value >= 0)
-                                nodeHandler.DisplayData.TimeLeft = QuickItemScan.PluginConfig.Scanner.ScanTimer.Value;
-                            if (nodeHandler.ScanNode?.nodeType == 2)
-                                hudManager.scannedScrapNum++;
-                        }
-                        continue;
+                        if (QuickItemScan.PluginConfig.Scanner.ScanTimer.Value >= 0)
+                            nodeHandler.DisplayData.TimeLeft = QuickItemScan.PluginConfig.Scanner.ScanTimer.Value;
+                        if (nodeHandler.ScanNode?.nodeType == 2)
+                            hudManager.scannedScrapNum++;
                     }
-
-                    //skip if not visible
-                    if (!visible)
-                        continue;
-
-                    //skip if we filled all slots
-                    //( should never happen at this point but skipping the costly ordered insertion is still worth the check )
-                    if (FreeScanDisplays.Count <= 0)
-                        continue;
-
-                    //sort by priority ( see ScanNodeHandler.compareTo )
-                    orderedNodes.AddOrdered(nodeHandler);
+                    continue;
                 }
 
-                foreach (var nodeHandler in orderedNodes)
+                //skip if not visible
+                if (!visible)
+                    continue;
+
+                //skip if we filled all slots
+                //( should never happen at this point but skipping the costly ordered insertion is still worth the check )
+                if (FreeScanDisplays.Count <= 0)
+                    continue;
+
+                //sort by priority ( see ScanNodeHandler.compareTo )
+                orderedNodes.AddOrdered(nodeHandler);
+            }
+
+            foreach (var nodeHandler in orderedNodes)
+            {
+                //try grab a new scanElement ( quit if we filled all slots )
+                if (!FreeScanDisplays.TryDequeue(out var index))
+                    break;
+
+                var element = ScanDisplays[index];
+
+                //should never happen but better check it anyway
+                //skip if the chosen element is destroyed
+                if (!element)
+                    continue;
+
+                //add current node to the list of nodes on screen
+                DisplayedScanNodes.Add(nodeHandler);
+
+                //mark all state variables
+                nodeHandler.DisplayData.IsActive = true;
+                nodeHandler.DisplayData.IsShown = false;
+                nodeHandler.DisplayData.Element = element;
+                nodeHandler.DisplayData.Index = index;
+
+                if (QuickItemScan.PluginConfig.Scanner.ScanTimer.Value >= 0)
+                    nodeHandler.DisplayData.TimeLeft = QuickItemScan.PluginConfig.Scanner.ScanTimer.Value;
+                else
+                    nodeHandler.DisplayData.TimeLeft = float.PositiveInfinity;
+
+                //update scrap values
+                if (nodeHandler.ScanNode?.nodeType != 2)
                 {
-                    //try grab a new scanElement ( quit if we filled all slots )
-                    if (!FreeScanDisplays.TryDequeue(out var index))
-                        break;
-
-                    var element = ScanDisplays[index];
-                    
-                    //should never happen but better check it anyway
-                    //skip if the chosen element is destroyed
-                    if (!element)
-                        continue;
-
-                    //add current node to the list of nodes on screen
-                    DisplayedScanNodes.Add(nodeHandler);
-                    
-                    //mark all state variables
-                    nodeHandler.DisplayData.IsActive = true;
-                    nodeHandler.DisplayData.IsShown = false;
-                    nodeHandler.DisplayData.Element = element;
-                    nodeHandler.DisplayData.Index = index;
-
-                    if (QuickItemScan.PluginConfig.Scanner.ScanTimer.Value >= 0)
-                        nodeHandler.DisplayData.TimeLeft = QuickItemScan.PluginConfig.Scanner.ScanTimer.Value;
-                    else
-                        nodeHandler.DisplayData.TimeLeft = float.PositiveInfinity;
-                    
-                    //update scrap values
-                    if (nodeHandler.ScanNode?.nodeType != 2)
-                    {
-                        hudManager.scannedScrapNum++;
-                    }
+                    hudManager.scannedScrapNum++;
                 }
             }
+        }
 
     }
 
@@ -519,8 +466,6 @@ internal class ScannerPatches
                         element.HeaderText.text = scanNode.headerText;
                         element.SubText.text = scanNode.subText;
 
-                        element.AssignedValue = scanNode.scrapValue;
-                        element.AssignedCount = 1;
                     }
 
                     if (handler.DisplayData.IsShown && !element.AssignedValue.Equals(scanNode.scrapValue))
@@ -600,7 +545,6 @@ internal class ScannerPatches
             element.gameObject.SetActive(false);
             element.AssignedIdentifier = null;
             element.AssignedValue = null;
-            element.AssignedCount = 0;
             //mark the index as free
             FreeScanDisplays.Enqueue(handler.DisplayData.Index);
             
@@ -661,12 +605,11 @@ internal class ScannerPatches
         var screenRect = _screenRect.rect;
         
         //calculate max distance to cluster
-        var distance = Math.Max(screenRect.width, screenRect.height)
+        var maxDistance = Math.Max(screenRect.width, screenRect.height)
                        * (QuickItemScan.PluginConfig.Performance.Cluster.MaxDistance.Value / 100f);
-        
-        if(QuickItemScan.PluginConfig.Debug.VerboseColliders.Value)
-            QuickItemScan.Log.LogDebug($"Distance is: {distance}");
-        
+
+        var maxSqrDistance = maxDistance * maxDistance;
+
         //iterate all the categories
         foreach (var (_, list) in clusterableData)
         {
@@ -674,7 +617,7 @@ internal class ScannerPatches
             if (!QuickItemScan.PluginConfig.Performance.Cluster.IgnoreDistance.Value)
             {
                 //use the DBSCAN algorithm to compute clusters
-                using (DBSCAN.ParseClusters(list, DisplayDistance, distance,
+                using (DBSCAN.ParseClusters(list, DisplayDistance, maxSqrDistance,
                            QuickItemScan.PluginConfig.Performance.Cluster.MinItems.Value,
                            out var clusters, out var outliers))
                 {
@@ -777,18 +720,14 @@ internal class ScannerPatches
                 //if we found a valid node
                 if (target)
                 {
-                    //if we need to compute the median point
-                    if (!QuickItemScan.PluginConfig.Performance.Cluster.UseClosest.Value)
-                    {
-                        target = cluster.GetMedianFromPoint(ViewportCenter, ViewportDistance);
-                    }
-
-                    int? scrapValue = null!;
+                    var scrapValue = 0;
                     
                     //if it is a scrap node calculate the total scrap value
                     var isScrap = target.ScanNode.nodeType == 2;
                     if (isScrap)
                         scrapValue = cluster.Select(n => n.ScanNode.scrapValue).Sum();
+
+                    element.AssignedValue = scrapValue;
 
                     var scanNode = target.ScanNode;
 
@@ -809,28 +748,13 @@ internal class ScannerPatches
 
                         element.Animator.SetInteger(ColorNumberHash, targetIdentifier.Value.Type);
 
-                        if (!isScrap)
-                            element.AssignedValue = 1;
-                        else
-                            element.AssignedValue = null;
                     }
 
                     var count = cluster.Count;
-                        
-                    //if the count is outdated
-                    if (element.AssignedCount != count)
-                    {
-                        //update the text in the element
-                        element.AssignedCount = count;
-                        element.HeaderText.text = $"{scanNode.headerText} x{count}";
-                    }
-                        
-                    //if the scrap value is outdated
-                    if (element.AssignedValue != scrapValue)
-                    {
-                        element.AssignedValue = scrapValue;
-                        element.SubText.text = isScrap ? $"Value: {scrapValue}" : scanNode.subText;
-                    }
+
+                    //update the text in the element
+                    element.HeaderText.text = $"{scanNode.headerText} x{count}";
+                    element.SubText.text = isScrap ? $"Value: {scrapValue}" : scanNode.subText;
 
                     element.RectTransform.anchoredPosition = target.DisplayData.RectPos;
                     
