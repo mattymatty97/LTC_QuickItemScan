@@ -84,7 +84,7 @@
         <ItemGroup>
             <PackageFiles Include="$(SolutionDir)\README.md" />
             <PackageFiles Include="$(SolutionDir)\CHANGELOG.md" />
-            <!--<PackageFiles Include="$(SolutionDir)\LICENSE" />-->
+            <PackageFiles Include="$(SolutionDir)\LICENSE" />
         </ItemGroup>
         <Copy
             DestinationFolder="$(DistributionDir)"
