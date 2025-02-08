@@ -1,5 +1,5 @@
 ﻿using System;
-using GameNetcodeStuff;
+using System.Collections.Generic;
 using QuickItemScan.Components.ScanElement;
 using QuickItemScan.Dependency;
 using QuickItemScan.Patches;
@@ -33,17 +33,22 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
     //Holder class with the current cluster status
     public class ScanNodeClusterData
     {
-        protected internal ScanNodeClusterData() {}
-        //Index to the assigned cluster ScanElement
-        public int Index { get; internal set; } = -1;
-        //the assigned cluster ScanElement
-        public ScanElementHolder Element { get; internal set; }
+        protected internal ScanNodeClusterData(ScanNodeHandler handler)
+        {
+            _handler = handler;
+        }
+
+        private readonly ScanNodeHandler _handler;
+
+        //other elements in the cluster
+        internal List<ScanNodeHandler> Cluster { get; set; } = null!;
+
         //is this node assigned to a Cluster
-        public bool HasCluster { get; internal set; }
+        public bool HasCluster => Cluster != null;
+
         //the master of a cluster is the node that holds the Element
-        //( if this node is removed from screen it needs to either elect a new master or disable the cluster )
-        public bool IsMaster { get; internal set; }
-        
+        public bool IsMaster => Cluster is { Count: > 0 } && Cluster[0] == _handler;
+
     }
     
     //Holder class with the current state
@@ -53,12 +58,16 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
 
         //Index to the assigned ScanElement
         public int Index { get; internal set; } = -1;
+
         //the assigned ScanElement
         public ScanElementHolder Element { get; internal set; }
+
         //is this node assigned to a ScanElement
         public bool IsActive { get; internal set; }
+
         //has this ScanElement been activated
         public bool IsShown { get; internal set; }
+
         //how long until this ScanNode should disappear form screen
         public float TimeLeft { get; internal set; } = 1;
         
@@ -72,28 +81,38 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
     //holder Properties
     public ScanNodeComponents Components { get; } = new();
     public ScanNodeDisplayData DisplayData { get; } = new();
-    public ScanNodeClusterData ClusterData { get; } = new();
+    public ScanNodeClusterData ClusterData { get; }
 
     //local variables for internal use
     private float _updateInterval = 0f;
     
     //main properties for the ScanNode
     public ScanNodeProperties ScanNode { get; internal set; } = null!;
+
     //Node has Line Of Sight to the player
     public bool HasLos { get; internal set; } = false;
+
     //Cached distance to the player
     public float DistanceToPlayer { get; private set; } = float.PositiveInfinity;
+
     //This node is in range to be scanned
     //( inside the SphereCollider range )
     public bool InMaxRange { get; private set; } = false;
+
     //This node is too close to be scanned
     public bool InMinRange { get; private set; } = true;
+
     //this node targets a valid entity/item/door
     public bool IsValid { get; private set; } = false;
+
     //this node is currently in the player camera Field of View
     public bool IsOnScreen { get; internal set; } = false;
 
-    
+    public ScanNodeHandler()
+    {
+        ClusterData = new ScanNodeClusterData(this);
+    }
+
     private void Start()
     {
         //cache possible components for the ScanNode

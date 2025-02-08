@@ -10,7 +10,6 @@ public class ScanElementHolder : MonoBehaviour
     public Animator Animator { get; private set; }
     public TextMeshProUGUI HeaderText { get; private set; }
     public TextMeshProUGUI SubText { get; private set; }
-    
     public NodeIdentifier? AssignedIdentifier { get; internal set; }
     public int? AssignedValue { get; internal set; }
     

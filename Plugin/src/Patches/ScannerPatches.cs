@@ -23,11 +23,13 @@ internal class ScannerPatches
 {
     private static readonly int ColorNumberHash = Animator.StringToHash("colorNumber");
     private static readonly int DisplayHash = Animator.StringToHash("display");
+
     //compare by viewport z value ( distance to camera )
     private static readonly IComparer<ScanNodeHandler> DistanceComparer = Comparer<ScanNodeHandler>.Create((n1, n2) =>
         n1.DistanceToPlayer.CompareTo(n2.DistanceToPlayer));
     private static readonly IComparer<ScanNodeHandler> InverseDistanceComparer = Comparer<ScanNodeHandler>.Create((n1, n2) =>
         n2.DistanceToPlayer.CompareTo(n1.DistanceToPlayer));
+
     //calculate cord distance
     private static readonly Func<ScanNodeHandler, ScanNodeHandler, float> DisplayDistance =
         (n1, n2) => (n1.DisplayData.RectPos - n2.DisplayData.RectPos).sqrMagnitude;
@@ -38,25 +40,24 @@ internal class ScannerPatches
     private static float _displayTotalInterval;
     private static bool  _addingDisplayTotal;
     private static int   _newNodesToAdd;
+
     //lobby object cache
     private static RectTransform _screenRect;
     
     //scanElements
     private static ScanElementHolder[] ScanDisplays = [];
-    //clusterElements
-    private static ScanElementHolder[] ClusterDisplays = [];
-    //name of each cluster
-    private static string[] ClusterDisplayAssignment = [];
-    //nodes assigned to clusters
-    private static List<ScanNodeHandler>[] ClusterNodes = [];
+
     //available scanElements
     private static readonly Queue<int> FreeScanDisplays = [];
-    //available clusterElements
-    private static readonly Queue<int> FreeClusterDisplays = [];
+
     //scan nodes in player range
-    public static readonly HashSet<ScanNodeHandler> ScannableNodes = new();
+    public static readonly HashSet<ScanNodeHandler> ScannableNodes = [];
+
     //scan nodes currently on HUD
-    private static readonly HashSet<ScanNodeHandler> DisplayedScanNodes = new();
+    private static readonly HashSet<ScanNodeHandler> DisplayedScanNodes = [];
+
+    //clusters currently on HUD
+    private static readonly List<List<ScanNodeHandler>> DisplayedClusters = [];
 
     [HarmonyPatch(typeof(ScanNodeProperties), "Awake")]
     [HarmonyPostfix]
@@ -75,7 +76,8 @@ internal class ScannerPatches
         _newNodeInterval = 0f;
 
         FreeScanDisplays.Clear();
-        FreeClusterDisplays.Clear();
+
+        ResetClusters();
 
         DisplayedScanNodes.Clear();
 
@@ -116,32 +118,6 @@ internal class ScannerPatches
         {
             clusterElementTransform = new GameObject("ClusterElements").transform;
             clusterElementTransform.transform.SetParent(mainTransform, false);
-        }
-        
-        Array.Resize(ref ClusterDisplays, QuickItemScan.PluginConfig.Performance.Cluster.NodeCount.Value);
-        Array.Resize(ref ClusterDisplayAssignment, QuickItemScan.PluginConfig.Performance.Cluster.NodeCount.Value);
-        Array.Resize(ref ClusterNodes, QuickItemScan.PluginConfig.Performance.Cluster.NodeCount.Value);
-
-        for (var i = 0; i < QuickItemScan.PluginConfig.Performance.Cluster.NodeCount.Value; i++)
-        {
-            var element = Object.Instantiate(original, original.transform.position, original.transform.rotation,
-                clusterElementTransform);
-            element.transform.name = $"cluster-{i}";
-            element.gameObject.SetActive(true);
-
-            //mark index as available
-            FreeClusterDisplays.Enqueue(i);
-            var holder = ClusterDisplays[i] = element.gameObject.AddComponent<ScanElementHolder>();
-
-            //disable animator
-            //holder.Animator.enabled = false;
-
-            ClusterDisplayAssignment[i] = null;
-            var nodes = ClusterNodes[i];
-            //initialize cluster assignment list
-            if (nodes == null) ClusterNodes[i] = nodes = new List<ScanNodeHandler>();
-
-            nodes.Clear();
         }
 
         //empty this so other mods do not complain
@@ -188,33 +164,6 @@ internal class ScannerPatches
             FreeScanDisplays.Enqueue(index);
         }
 
-        FreeClusterDisplays.Clear();
-        for (var index = 0; index < ClusterDisplays.Length; index++)
-        {
-            var element = ClusterDisplays[index];
-            if(element)
-                element.gameObject.SetActive(false);
-            FreeClusterDisplays.Enqueue(index);
-        }
-        
-        for (var index = 0; index < ClusterDisplayAssignment.Length; index++)
-        {
-            ClusterDisplayAssignment[index] = null;
-        }
-
-        foreach (var list in ClusterNodes)
-        {
-            foreach (var node in list)
-            {
-                node.ClusterData.Index = -1;
-                node.ClusterData.IsMaster = false;
-                node.ClusterData.HasCluster = false;
-                node.ClusterData.Element = null;
-            }
-
-            list.Clear();
-        }
-
         foreach (var handler in DisplayedScanNodes)
         {
             handler.DisplayData.IsActive = false;
@@ -224,6 +173,8 @@ internal class ScannerPatches
         }
 
         DisplayedScanNodes.Clear();
+
+        ResetClusters();
 
         __instance.totalScrapScanned = 0;
         __instance.totalScrapScannedDisplayNum = 0;
@@ -402,8 +353,7 @@ internal class ScannerPatches
         {
             _clusterInterval = 1f;
             //only compute if clusters are enabled
-            if (QuickItemScan.PluginConfig.Performance.Cluster.NodeCount.Value > 0)
-                shouldComputeClusters = true;
+            shouldComputeClusters = QuickItemScan.PluginConfig.Performance.Cluster.Enabled.Value;
         }
         
         //grab the cached player ScreenRect object or cache it
@@ -440,9 +390,19 @@ internal class ScannerPatches
                     }
 
                     var scanNode = handler.ScanNode;
-                    var identifier = new NodeIdentifier(scanNode.nodeType, scanNode.headerText);
 
-                    element.AssignedIdentifier = identifier;
+                    NodeIdentifier identifier;
+                    if (element.AssignedIdentifier == null ||
+                        element.AssignedIdentifier.Value.Type != scanNode.nodeType ||
+                        element.AssignedIdentifier.Value.Name != scanNode.headerText)
+                    {
+                        identifier = new NodeIdentifier(scanNode.nodeType, scanNode.headerText);
+                        element.AssignedIdentifier = identifier;
+                    }
+                    else
+                    {
+                        identifier = element.AssignedIdentifier.Value;
+                    }
                     
                     //initialize the field ( run it only once to save resources )
                     //throttle init of new nodes
@@ -457,23 +417,17 @@ internal class ScannerPatches
                         //activate the ScanElement
                         if (!element.gameObject.activeSelf)
                         {
+                            element.Animator.enabled = true;
                             element.gameObject.SetActive(true);
                             element.Animator.SetInteger(ColorNumberHash, scanNode.nodeType);
                             if (scanNode.creatureScanID != -1)
                                 hudManager.AttemptScanNewCreature(scanNode.creatureScanID);
                         }
-
-                        //update the ScanElement text
-                        element.HeaderText.text = scanNode.headerText;
-                        element.SubText.text = scanNode.subText;
-
                     }
 
-                    if (handler.DisplayData.IsShown && !element.AssignedValue.Equals(scanNode.scrapValue))
-                    {
-                        element.AssignedValue = scanNode.scrapValue;
-                        element.SubText.text = scanNode.subText;
-                    }
+                    //update the ScanElement text
+                    element.HeaderText.text = scanNode.headerText;
+                    element.SubText.text = scanNode.subText;
 
                     //update position on screen ( use patch from LCUltrawide for compatibility )
                     //use cached viewport pos
@@ -500,6 +454,10 @@ internal class ScannerPatches
 
                     //if this node has been activated
                     if (!handler.DisplayData.IsShown)
+                        continue;
+
+                    //if the first animation has not completed yet
+                    if (element.Animator.isActiveAndEnabled && element.Animator.GetCurrentAnimatorStateInfo(0).normalizedTime < 1)
                         continue;
 
                     //categorize the node by text
@@ -559,35 +517,11 @@ internal class ScannerPatches
         //if node was in a cluster
         if (handler.ClusterData.HasCluster)
         {
-            var cIndex = handler.ClusterData.Index;
-            var cluster = ClusterNodes[cIndex];
+            var cluster = handler.ClusterData.Cluster;
             //remove it form the nodes in the cluster
             cluster.Remove(handler);
-
-            //if it was the master of the cluster
-            if (handler.ClusterData.IsMaster)
-            {
-                //if there are other nodes in the cluster
-                if (cluster.Count > 0)
-                {
-                    //elect a new master
-                    var next = cluster[0];
-                    next.ClusterData.IsMaster = true;
-                }
-                else
-                {
-                    //disable the cluster
-                    DisableCluster(cIndex);
-                    //mark the index as free
-                    FreeClusterDisplays.Enqueue(cIndex);
-                }
-            }
-
             //reset states
-            handler.ClusterData.HasCluster = false;
-            handler.ClusterData.Index = -1;
-            handler.ClusterData.Element = null;
-            handler.ClusterData.IsMaster = false;
+            handler.ClusterData.Cluster = null;
         }
     }
 
@@ -626,73 +560,57 @@ internal class ScannerPatches
                     if (clusters.Count > 0)
                         foreach (var cluster in clusters)
                         {
-                            ProcessCluster(cluster, outliers);
+                            ProcessCluster(cluster);
                         }
-
+                    else
+                        ProcessOutliers(list);
                     ProcessOutliers(outliers);
                 }
             }
             else
             {
-                using (ListPool<ScanNodeHandler>.Get(out var outliers))
+                //if we have enough nodes process them together
+                if (list.Count > QuickItemScan.PluginConfig.Performance.Cluster.MinItems.Value)
                 {
-                    //if we have enough nodes process them together
-                    if (list.Count > QuickItemScan.PluginConfig.Performance.Cluster.MinItems.Value)
-                    {
-                        ProcessCluster(list, outliers);
-                    }
-                    else
-                    {
-                        //otherwise make them all as separate nodes
-                        outliers.AddRange(list);
-                    } 
-                    
-                    ProcessOutliers(outliers);
+                    ProcessCluster(list);
+                }
+                else
+                {
+                    //otherwise mark them all as separate nodes
+                    ProcessOutliers(list);
                 }
             }
         }
         
         return;
 
-        void ProcessCluster(List<ScanNodeHandler> cluster, List<ScanNodeHandler> outliers)
+        void ProcessCluster(List<ScanNodeHandler> cluster)
         {
-            //try to get a new empty cluster
-            //quit if there are none
-            if (!FreeClusterDisplays.TryDequeue(out var index))
-            {
-                outliers.AddRange(cluster);
-                return;
-            }
-
-            var element = ClusterDisplays[index];
-            
+            var orderedNodes = ListPool<ScanNodeHandler>.Get();
             //assign each node to the cluster
             foreach (var node in cluster)
             {
                 //set the states
-                node.ClusterData.Element = element;
-                node.ClusterData.Index = index;
-                node.ClusterData.HasCluster = true;
+                node.ClusterData.Cluster = orderedNodes;
                 
                 //add the node to the list
-                ClusterNodes[index].AddOrdered(node, DistanceComparer);
+                orderedNodes.AddOrdered(node, DistanceComparer);
             }
+
+            DisplayedClusters.Add(orderedNodes);
         }
 
         void ProcessOutliers(List<ScanNodeHandler> outliers)
         {
             foreach (var nodeHandler in outliers)
             {
-                //if it was already an outlier skip it
-                if (!nodeHandler.ClusterData.HasCluster)
-                    continue;
-                
-                //reset the states
-                nodeHandler.ClusterData.HasCluster = false;
-                nodeHandler.ClusterData.IsMaster = false;
+                var element = nodeHandler.DisplayData.Element;
 
-                //force it to re-enable the original ScanNode
-                nodeHandler.DisplayData.IsShown = false;
+                if (!element.isActiveAndEnabled)
+                {
+                    element.Animator.enabled = false;
+                    element.gameObject.SetActive(true);
+                }
             }
         }
     }
@@ -701,11 +619,8 @@ internal class ScannerPatches
     {
         using (ListPool<ScanNodeHandler>.Get(out var orderedClusters))
         {
-            for (var i = 0; i < ClusterNodes.Length; i++)
+            foreach(var cluster in DisplayedClusters)
             {
-                var cluster = ClusterNodes[i];
-                var element = ClusterDisplays[i];
-                
                 //try to find a valid node
                 ScanNodeHandler target = null;
                 while (cluster.Count > 0 && !target)
@@ -717,70 +632,55 @@ internal class ScannerPatches
                         target = null;
                     }
                 }
-                    
+
+                if (!target)
+                    continue;
+
                 //if we found a valid node
-                if (target)
+                var element = target.DisplayData.Element;
+                var scrapValue = 0;
+
+                //if it is a scrap node calculate the total scrap value
+                var isScrap = target.ScanNode.nodeType == 2;
+                if (isScrap)
+                    scrapValue = cluster.Select(n => n.ScanNode.scrapValue).Sum();
+
+                var scanNode = target.ScanNode;
+
+                //if the clusterElement was disabled enable it
+                if (!element.gameObject.activeSelf)
                 {
-                    var scrapValue = 0;
-                    
-                    //if it is a scrap node calculate the total scrap value
-                    var isScrap = target.ScanNode.nodeType == 2;
-                    if (isScrap)
-                        scrapValue = cluster.Select(n => n.ScanNode.scrapValue).Sum();
-
-                    element.AssignedValue = scrapValue;
-
-                    var scanNode = target.ScanNode;
-
-                    var targetIdentifier = target.DisplayData.Element.AssignedIdentifier!;
-                    
-                    //if the clusterElement was disabled enable it
-                    if (!element.gameObject.activeSelf)
-                    {
-                        element.gameObject.SetActive(true);
-                    }
-                    
-                    var wrongType = element.AssignedIdentifier == null || element.AssignedIdentifier.Value.Type != targetIdentifier.Value.Type;
-
-                    element.AssignedIdentifier = targetIdentifier;
-
-                    if(wrongType)
-                    {
-                        //TODO: update color w/o animator
-
-                        element.Animator.SetInteger(ColorNumberHash, target.ScanNode.nodeType);
-
-                    }
-
-                    var count = cluster.Count;
-
-                    //update the text in the element
-                    element.HeaderText.text = $"{scanNode.headerText} x{count}";
-                    element.SubText.text = isScrap ? $"Value: {scrapValue}" : scanNode.subText;
-
-                    element.RectTransform.anchoredPosition = target.DisplayData.RectPos;
-                    
-                    element.transform.SetSiblingIndex(orderedClusters.AddOrdered(target, InverseDistanceComparer));
-                    
-                    //mark all nodes as not master
-                    foreach (var node in cluster)
-                    {
-                        node.ClusterData.IsMaster = false;
-                        var nodeElement = node.DisplayData.Element;
-                        //disable the ScanNodes
-                        if (nodeElement&& nodeElement.gameObject.activeSelf)
-                            nodeElement.gameObject.SetActive(false);
-                    }
-                    //mark the target as the master
-                    target.ClusterData.IsMaster = true;
+                    //keep animator disabled for smoother transition
+                    element.Animator.enabled = false;
+                    element.gameObject.SetActive(true);
                 }
-                else
+
+                var count = cluster.Count;
+
+                //update the text in the element
+                element.HeaderText.text = $"{scanNode.headerText} x{count}";
+                element.SubText.text = isScrap ? $"Value: {scrapValue}" : scanNode.subText;
+
+                element.RectTransform.anchoredPosition = target.DisplayData.RectPos;
+
+                element.transform.SetSiblingIndex(orderedClusters.AddOrdered(target, InverseDistanceComparer));
+
+                //mark all nodes as not master
+                foreach (var node in cluster)
                 {
-                    //if no nodes disable the cluster
-                    DisableCluster(i);
+                    if (node == target)
+                        continue;
+
+                    var nodeElement = node.DisplayData.Element;
+                    //sanity check
+                    if (!nodeElement)
+                        continue;
+
+                    //disable the ScanNodes
+                    if(nodeElement.gameObject.activeSelf)
+                        nodeElement.gameObject.SetActive(false);
                 }
-            }    
-            
+            }
         }
     }
 
@@ -826,35 +726,23 @@ internal class ScannerPatches
         hudManager.totalValueText.text = hudManager.totalScrapScannedDisplayNum.ToString();
         hudManager.UIAudio.PlayOneShot(hudManager.addToScrapTotalSFX);
     }
-    
-    private static void DisableCluster(int index)
-    {
-        var element = ClusterDisplays[index];
-        ClusterDisplayAssignment[index] = null;
-        element.AssignedIdentifier = null;
-        if (element && element.gameObject.activeSelf)
-            element.gameObject.SetActive(false);
-    }
 
     private static void ResetClusters()
     {
-        FreeClusterDisplays.Clear();
-        for (var index = 0; index < ClusterDisplays.Length; index++)
+        foreach (var cluster in DisplayedClusters)
         {
-            //DisableCluster(index);
-            FreeClusterDisplays.Enqueue(index);
-        }
-
-        foreach (var list in ClusterNodes)
-        {
-            foreach (var node in list)
+            foreach (var node in cluster)
             {
-                node.ClusterData.Index = -1;
-                node.ClusterData.IsMaster = false;
-                node.ClusterData.Element = null;
-            }
+                //sanity check
+                if (!node)
+                    continue;
 
-            list.Clear();
+                node.ClusterData.Cluster = null;
+            }
+            //release resources
+            ListPool<ScanNodeHandler>.Release(cluster);
         }
+
+        DisplayedClusters.Clear();
     }
 }

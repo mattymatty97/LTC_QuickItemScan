@@ -90,7 +90,7 @@ internal class QuickItemScan : BaseUnityPlugin
 		{
 			internal static class Cluster
 			{
-				internal static ConfigEntry<int> NodeCount;
+				internal static ConfigEntry<bool> Enabled;
 				internal static ConfigEntry<int> MinItems;
 				internal static ConfigEntry<float> MaxDistance;
 				internal static ConfigEntry<bool> IgnoreDistance;
@@ -143,9 +143,8 @@ internal class QuickItemScan : BaseUnityPlugin
 			Scanner.Total.UpdateDown = config.Bind("Scanner.Total", "Update If Lower", true, new ConfigDescription(
 				"Update counter on lower total\nVanilla: false"));
 			//Performance.Cluster
-			Performance.Cluster.NodeCount = config.Bind("Performance.Cluster", "Count", 20,
-				new ConfigDescription("how many clusters to compute ( 0 means disabled )",
-					new AcceptableValueRange<int>(0, 100)));
+			Performance.Cluster.Enabled = config.Bind("Performance.Cluster", "Enabled", true,
+				new ConfigDescription("if to compute clusters"));
 			Performance.Cluster.MinItems = config.Bind("Performance.Cluster", "Min items", 3,
 				new ConfigDescription("min number of items to form a cluster",
 					new AcceptableValueRange<int>(3, 10)));
@@ -176,7 +175,7 @@ internal class QuickItemScan : BaseUnityPlugin
 				LethalConfigProxy.AddConfig(Scanner.NewNodeCount);
 				LethalConfigProxy.AddConfig(Scanner.NewNodeDelay);
 				//
-				LethalConfigProxy.AddConfig(Performance.Cluster.NodeCount, true);
+				LethalConfigProxy.AddConfig(Performance.Cluster.Enabled);
 				LethalConfigProxy.AddConfig(Performance.Cluster.MinItems);
 				LethalConfigProxy.AddConfig(Performance.Cluster.MaxDistance);
 				LethalConfigProxy.AddConfig(Performance.Cluster.IgnoreDistance);
