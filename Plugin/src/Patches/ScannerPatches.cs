@@ -329,7 +329,7 @@ internal class ScannerPatches
                     nodeHandler.DisplayData.TimeLeft = float.PositiveInfinity;
 
                 //update scrap values
-                if (nodeHandler.ScanNode?.nodeType != 2)
+                if (nodeHandler.ScanNode?.nodeType == 2)
                 {
                     hudManager.scannedScrapNum++;
                 }

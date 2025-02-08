@@ -175,6 +175,11 @@ internal class QuickItemScan : BaseUnityPlugin
 				LethalConfigProxy.AddConfig(Scanner.NewNodeCount);
 				LethalConfigProxy.AddConfig(Scanner.NewNodeDelay);
 				//
+				LethalConfigProxy.AddConfig(Scanner.Total.BaseSpeed);
+				LethalConfigProxy.AddConfig(Scanner.Total.ScalingFactor);
+				LethalConfigProxy.AddConfig(Scanner.Total.MaxValue);
+				LethalConfigProxy.AddConfig(Scanner.Total.UpdateDown);
+				//
 				LethalConfigProxy.AddConfig(Performance.Cluster.Enabled);
 				LethalConfigProxy.AddConfig(Performance.Cluster.MinItems);
 				LethalConfigProxy.AddConfig(Performance.Cluster.MaxDistance);

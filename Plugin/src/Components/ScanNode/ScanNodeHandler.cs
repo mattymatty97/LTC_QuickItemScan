@@ -137,9 +137,7 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
 
         //player is out of scan range
         InMinRange = true;
-        IsValid = false;
         HasLos = false;
-        IsOnScreen = false;
         ScannerPatches.ScannableNodes.Remove(this);
     }
 
@@ -260,11 +258,11 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
         if (!ScanNode.requiresLineOfSight)
             return;
 
-        HasLos = false;
         //only update LOS if we have a reason to
         if (!ShouldUpdateLOS())
             return;
 
+        HasLos = false;
         if (InMinRange)
             return;
 
