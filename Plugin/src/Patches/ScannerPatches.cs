@@ -128,13 +128,14 @@ internal class ScannerPatches
                 clusterElementTransform);
             element.transform.name = $"cluster-{i}";
             element.gameObject.SetActive(true);
-            //disable animator
-            element.GetComponent<Animator>().enabled = false;
 
             //mark index as available
             FreeClusterDisplays.Enqueue(i);
-            ClusterDisplays[i] = element.gameObject.AddComponent<ScanElementHolder>();
-            
+            var holder = ClusterDisplays[i] = element.gameObject.AddComponent<ScanElementHolder>();
+
+            //disable animator
+            //holder.Animator.enabled = false;
+
             ClusterDisplayAssignment[i] = null;
             var nodes = ClusterNodes[i];
             //initialize cluster assignment list
@@ -690,7 +691,7 @@ internal class ScannerPatches
                 nodeHandler.ClusterData.HasCluster = false;
                 nodeHandler.ClusterData.IsMaster = false;
 
-                //force it to redraw the original ScanNode
+                //force it to re-enable the original ScanNode
                 nodeHandler.DisplayData.IsShown = false;
             }
         }
@@ -739,14 +740,15 @@ internal class ScannerPatches
                         element.gameObject.SetActive(true);
                     }
                     
-                    var wrongType = !element.AssignedIdentifier.HasValue ||
-                                    element.AssignedIdentifier.Value.Type != targetIdentifier.Value.Type;
+                    var wrongType = element.AssignedIdentifier == null || element.AssignedIdentifier.Value.Type != targetIdentifier.Value.Type;
+
+                    element.AssignedIdentifier = targetIdentifier;
 
                     if(wrongType)
                     {
                         //TODO: update color w/o animator
 
-                        element.Animator.SetInteger(ColorNumberHash, targetIdentifier.Value.Type);
+                        element.Animator.SetInteger(ColorNumberHash, target.ScanNode.nodeType);
 
                     }
 
@@ -829,6 +831,7 @@ internal class ScannerPatches
     {
         var element = ClusterDisplays[index];
         ClusterDisplayAssignment[index] = null;
+        element.AssignedIdentifier = null;
         if (element && element.gameObject.activeSelf)
             element.gameObject.SetActive(false);
     }
