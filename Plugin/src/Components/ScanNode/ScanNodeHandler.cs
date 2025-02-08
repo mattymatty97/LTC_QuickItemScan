@@ -323,7 +323,7 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
         if (QuickItemScan.PluginConfig.Optional.ScanOpenDoors.Value)
             return true;
 
-        //if it is a door and is closed
+        //if it is a door and is open
         if (terminalAccessibleObject && terminalAccessibleObject.isBigDoor &&
             terminalAccessibleObject.isDoorOpen)
             return false;

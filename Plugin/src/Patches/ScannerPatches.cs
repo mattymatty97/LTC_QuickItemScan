@@ -4,14 +4,10 @@ using System.Linq;
 using GameNetcodeStuff;
 using HarmonyLib;
 using MonoMod.RuntimeDetour;
-using QuickItemScan.Components;
 using QuickItemScan.Components.ScanElement;
 using QuickItemScan.Components.ScanNode;
-using QuickItemScan.Dependency;
 using QuickItemScan.Utils;
-using Unity.XR.OpenVR;
 using UnityEngine;
-using UnityEngine.Animations;
 using UnityEngine.Pool;
 using Object = UnityEngine.Object;
 
@@ -29,6 +25,8 @@ internal class ScannerPatches
         n1.DistanceToPlayer.CompareTo(n2.DistanceToPlayer));
     private static readonly IComparer<ScanNodeHandler> InverseDistanceComparer = Comparer<ScanNodeHandler>.Create((n1, n2) =>
         -n1.DistanceToPlayer.CompareTo(n2.DistanceToPlayer));
+    private static readonly IComparer<ScanNodeHandler> InverseViewportDistanceComparer = Comparer<ScanNodeHandler>.Create((n1, n2) =>
+        -n1.DisplayData.RectPos.z.CompareTo(n2.DisplayData.RectPos.z));
 
     //calculate cord distance
     private static readonly Func<ScanNodeHandler, ScanNodeHandler, float> DisplayDistance =
@@ -438,7 +436,7 @@ internal class ScannerPatches
                         hasScannedScrap = true;
                     }
                         
-                    element.transform.SetSiblingIndex(orderedNodes.AddOrdered(handler, InverseDistanceComparer));
+                    element.transform.SetSiblingIndex(orderedNodes.AddOrdered(handler, InverseViewportDistanceComparer));
 
 
                     //disable the animator once complete
@@ -615,69 +613,62 @@ internal class ScannerPatches
 
     private static void UpdateClustersOnScreen(HUDManager hudManager)
     {
-        using (ListPool<ScanNodeHandler>.Get(out var orderedClusters))
+        foreach(var cluster in DisplayedClusters)
         {
-            foreach(var cluster in DisplayedClusters)
+            //try to find a valid node
+            ScanNodeHandler target = null;
+            while (cluster.Count > 0 && !target)
             {
-                //try to find a valid node
-                ScanNodeHandler target = null;
-                while (cluster.Count > 0 && !target)
+                target = cluster[0];
+                if (!target || !target.ScanNode)
                 {
-                    target = cluster[0];
-                    if (!target || !target.ScanNode)
-                    {
-                        cluster.Remove(target);
-                        target = null;
-                    }
+                    cluster.Remove(target);
+                    target = null;
                 }
+            }
 
-                if (!target)
+            if (!target)
+                continue;
+
+            //if we found a valid node
+            var element = target.DisplayData.Element;
+            var scrapValue = 0;
+
+            //if it is a scrap node calculate the total scrap value
+            var isScrap = target.ScanNode.nodeType == 2;
+            if (isScrap)
+                scrapValue = cluster.Select(n => n.ScanNode.scrapValue).Sum();
+
+            var scanNode = target.ScanNode;
+
+            //if the clusterElement was disabled enable it
+            if (!element.gameObject.activeSelf)
+            {
+                //keep animator disabled for smoother transition
+                element.Animator.enabled = false;
+                element.gameObject.SetActive(true);
+            }
+
+            var count = cluster.Count;
+
+            //update the text in the element
+            element.HeaderText.text = $"{scanNode.headerText} x{count}";
+            element.SubText.text = isScrap ? $"Value: {scrapValue}" : scanNode.subText;
+
+            //mark all nodes as not master
+            foreach (var node in cluster)
+            {
+                if (node == target)
                     continue;
 
-                //if we found a valid node
-                var element = target.DisplayData.Element;
-                var scrapValue = 0;
+                var nodeElement = node.DisplayData.Element;
+                //sanity check
+                if (!nodeElement)
+                    continue;
 
-                //if it is a scrap node calculate the total scrap value
-                var isScrap = target.ScanNode.nodeType == 2;
-                if (isScrap)
-                    scrapValue = cluster.Select(n => n.ScanNode.scrapValue).Sum();
-
-                var scanNode = target.ScanNode;
-
-                //if the clusterElement was disabled enable it
-                if (!element.gameObject.activeSelf)
-                {
-                    //keep animator disabled for smoother transition
-                    element.Animator.enabled = false;
-                    element.gameObject.SetActive(true);
-                }
-
-                var count = cluster.Count;
-
-                //update the text in the element
-                element.HeaderText.text = $"{scanNode.headerText} x{count}";
-                element.SubText.text = isScrap ? $"Value: {scrapValue}" : scanNode.subText;
-
-                element.RectTransform.anchoredPosition = target.DisplayData.RectPos;
-
-                element.transform.SetSiblingIndex(orderedClusters.AddOrdered(target, InverseDistanceComparer));
-
-                //mark all nodes as not master
-                foreach (var node in cluster)
-                {
-                    if (node == target)
-                        continue;
-
-                    var nodeElement = node.DisplayData.Element;
-                    //sanity check
-                    if (!nodeElement)
-                        continue;
-
-                    //disable the ScanNodes
-                    if(nodeElement.gameObject.activeSelf)
-                        nodeElement.gameObject.SetActive(false);
-                }
+                //disable the ScanNodes
+                if(nodeElement.gameObject.activeSelf)
+                    nodeElement.gameObject.SetActive(false);
             }
         }
     }
