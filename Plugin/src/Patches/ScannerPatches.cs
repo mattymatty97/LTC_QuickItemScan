@@ -28,7 +28,7 @@ internal class ScannerPatches
     private static readonly IComparer<ScanNodeHandler> DistanceComparer = Comparer<ScanNodeHandler>.Create((n1, n2) =>
         n1.DistanceToPlayer.CompareTo(n2.DistanceToPlayer));
     private static readonly IComparer<ScanNodeHandler> InverseDistanceComparer = Comparer<ScanNodeHandler>.Create((n1, n2) =>
-        n2.DistanceToPlayer.CompareTo(n1.DistanceToPlayer));
+        -n1.DistanceToPlayer.CompareTo(n2.DistanceToPlayer));
 
     //calculate cord distance
     private static readonly Func<ScanNodeHandler, ScanNodeHandler, float> DisplayDistance =
@@ -110,14 +110,6 @@ internal class ScannerPatches
             //mark index as available
             FreeScanDisplays.Enqueue(i);
             ScanDisplays[i] = element.gameObject.AddComponent<ScanElementHolder>();
-        }
-
-        
-        var clusterElementTransform = mainTransform.Find("ClusterElements");
-        if (!clusterElementTransform)
-        {
-            clusterElementTransform = new GameObject("ClusterElements").transform;
-            clusterElementTransform.transform.SetParent(mainTransform, false);
         }
 
         //empty this so other mods do not complain
@@ -448,6 +440,12 @@ internal class ScannerPatches
                         
                     element.transform.SetSiblingIndex(orderedNodes.AddOrdered(handler, InverseDistanceComparer));
 
+
+                    //disable the animator once complete
+                    if (element.Animator.isActiveAndEnabled &&
+                        element.Animator.GetCurrentAnimatorStateInfo(0).normalizedTime >= 1)
+                        element.Animator.enabled = false;
+
                     //if we should recalculate the clusters
                     if (!shouldComputeClusters)
                         continue;
@@ -457,7 +455,7 @@ internal class ScannerPatches
                         continue;
 
                     //if the first animation has not completed yet
-                    if (element.Animator.isActiveAndEnabled && element.Animator.GetCurrentAnimatorStateInfo(0).normalizedTime < 1)
+                    if (element.Animator.isActiveAndEnabled)
                         continue;
 
                     //categorize the node by text

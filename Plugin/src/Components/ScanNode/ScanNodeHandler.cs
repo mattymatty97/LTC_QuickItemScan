@@ -160,6 +160,9 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
 
     private void FixedUpdate()
     {
+        if (!QuickItemScan.IsEnabled)
+            return;
+
         //if scan-node got deleted
         if (!ScanNode)
         {
@@ -174,8 +177,6 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
         var localPlayer = GameNetworkManager.Instance.localPlayerController;
         if (!localPlayer)
             return;
-
-        var playerEye = localPlayer.playerEye;
 
         var ogMaxRange = ScanNode.maxRange;
         float maxRange = ogMaxRange;
@@ -200,6 +201,9 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
 
     private void LateUpdate()
     {
+        if (!QuickItemScan.IsEnabled)
+            return;
+
         //if scan-node got deleted
         if (!ScanNode)
         {
@@ -307,8 +311,9 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
 
     private bool ShouldUpdateLOS()
     {
-        //Node is shown in HUD, or it is in range and player can scan
-        return InMaxRange && ScannerPatches.CanUpdate();
+        var hudManager = HUDManager.Instance;
+        //Node is shown in HUD, or it is in range and player is scanning
+        return InMaxRange && hudManager && hudManager.playerPingingScan > 0;
     }
     
     private bool CheckValid()

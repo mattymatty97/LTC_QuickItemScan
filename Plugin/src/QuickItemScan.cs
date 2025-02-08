@@ -20,6 +20,7 @@ internal class QuickItemScan : BaseUnityPlugin
 	// ReSharper disable once CollectionNeverQueried.Global
 	internal static readonly ISet<Hook> Hooks = new HashSet<Hook>();
 	internal static readonly Harmony Harmony = new Harmony(GUID);
+	internal static bool IsEnabled = false;
 	public static QuickItemScan INSTANCE { get; private set; }
 
 	public const string GUID = MyPluginInfo.PLUGIN_GUID;
@@ -54,6 +55,7 @@ internal class QuickItemScan : BaseUnityPlugin
 
 	internal static void DiscardPatches()
 	{
+		IsEnabled = false;
 		Harmony.UnpatchSelf();
 		foreach (var hook in Hooks)
 		{
@@ -64,6 +66,7 @@ internal class QuickItemScan : BaseUnityPlugin
 
 	internal static void ApplyPatches()
 	{
+		IsEnabled = true;
 		Harmony.PatchAll(Assembly.GetExecutingAssembly());
 		ScannerPatches.InitMonoMod();
 	}
