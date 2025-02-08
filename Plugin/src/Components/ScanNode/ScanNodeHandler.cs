@@ -243,6 +243,9 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
 
         HasLos = false;
         //only update LOS if we have a reason to
+        if (!ShouldUpdateLOS())
+            return;
+
         if (InMinRange)
             return;
 
@@ -283,6 +286,12 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
     {
         //Node is shown in HUD, or it is in range and player can scan
         return DisplayData.IsActive || ( InMaxRange && ScannerPatches.CanUpdate());
+    }
+
+    private bool ShouldUpdateLOS()
+    {
+        //Node is shown in HUD, or it is in range and player can scan
+        return InMaxRange && ScannerPatches.CanUpdate();
     }
     
     private bool CheckValid()
