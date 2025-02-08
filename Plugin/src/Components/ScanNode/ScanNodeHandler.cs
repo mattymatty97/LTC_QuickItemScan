@@ -163,13 +163,6 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
         if (!QuickItemScan.IsEnabled)
             return;
 
-        //if scan-node got deleted
-        if (!ScanNode)
-        {
-            Destroy(gameObject);
-            return;
-        }
-
         //sanity checks
         if (!GameNetworkManager.Instance)
             return;
@@ -203,13 +196,6 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
     {
         if (!QuickItemScan.IsEnabled)
             return;
-
-        //if scan-node got deleted
-        if (!ScanNode)
-        {
-            Destroy(gameObject);
-            return;
-        }
 
         //sanity checks
         if (!GameNetworkManager.Instance)
@@ -312,7 +298,7 @@ public class ScanNodeHandler : MonoBehaviour, IComparable<ScanNodeHandler>
     private bool ShouldUpdateLOS()
     {
         var hudManager = HUDManager.Instance;
-        //Node is shown in HUD, or it is in range and player is scanning
+        //node is range and player is scanning
         return InMaxRange && hudManager && hudManager.playerPingingScan > 0;
     }
     
